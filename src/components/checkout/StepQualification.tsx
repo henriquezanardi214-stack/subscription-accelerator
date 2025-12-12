@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowRight, ArrowLeft, Building2, Briefcase, TrendingUp } from "lucide-react";
+import { ArrowRight, ArrowLeft, Building2, Briefcase, TrendingUp, Loader2 } from "lucide-react";
 
 interface QualificationData {
   segmento: string;
@@ -19,9 +19,9 @@ interface QualificationData {
 interface StepQualificationProps {
   data: QualificationData;
   onUpdate: (data: QualificationData) => void;
-  onNext: () => void;
+  onSubmit: (isQualified: boolean) => void;
   onBack: () => void;
-  onDisqualified: () => void;
+  isLoading?: boolean;
 }
 
 const segmentos = ["Serviço", "Comércio", "Indústria", "Imobiliário"];
@@ -49,9 +49,9 @@ const faturamentos = [
 export const StepQualification = ({
   data,
   onUpdate,
-  onNext,
+  onSubmit,
   onBack,
-  onDisqualified,
+  isLoading,
 }: StepQualificationProps) => {
   const [errors, setErrors] = useState<Partial<QualificationData>>({});
 
@@ -88,11 +88,7 @@ export const StepQualification = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validate()) {
-      if (isQualified()) {
-        onNext();
-      } else {
-        onDisqualified();
-      }
+      onSubmit(isQualified());
     }
   };
 
@@ -116,6 +112,7 @@ export const StepQualification = ({
           <Select
             value={data.segmento}
             onValueChange={(value) => onUpdate({ ...data, segmento: value })}
+            disabled={isLoading}
           >
             <SelectTrigger className="h-12 bg-card border-border">
               <SelectValue placeholder="Selecione o segmento" />
@@ -141,6 +138,7 @@ export const StepQualification = ({
           <Select
             value={data.areaAtuacao}
             onValueChange={(value) => onUpdate({ ...data, areaAtuacao: value })}
+            disabled={isLoading}
           >
             <SelectTrigger className="h-12 bg-card border-border">
               <SelectValue placeholder="Selecione a área de atuação" />
@@ -166,6 +164,7 @@ export const StepQualification = ({
           <Select
             value={data.faturamento}
             onValueChange={(value) => onUpdate({ ...data, faturamento: value })}
+            disabled={isLoading}
           >
             <SelectTrigger className="h-12 bg-card border-border">
               <SelectValue placeholder="Selecione a previsão de faturamento" />
@@ -189,16 +188,27 @@ export const StepQualification = ({
             variant="outline"
             onClick={onBack}
             className="flex-1 h-12 font-semibold"
+            disabled={isLoading}
           >
             <ArrowLeft className="mr-2 w-5 h-5" />
             Voltar
           </Button>
           <Button
             type="submit"
+            disabled={isLoading}
             className="flex-1 h-12 gradient-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity"
           >
-            Continuar
-            <ArrowRight className="ml-2 w-5 h-5" />
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 w-5 h-5 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              <>
+                Continuar
+                <ArrowRight className="ml-2 w-5 h-5" />
+              </>
+            )}
           </Button>
         </div>
       </form>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowRight, User, Mail, Phone } from "lucide-react";
+import { ArrowRight, User, Mail, Phone, Loader2 } from "lucide-react";
 
 interface LeadData {
   nome: string;
@@ -14,9 +14,10 @@ interface StepLeadProps {
   data: LeadData;
   onUpdate: (data: LeadData) => void;
   onNext: () => void;
+  isLoading?: boolean;
 }
 
-export const StepLead = ({ data, onUpdate, onNext }: StepLeadProps) => {
+export const StepLead = ({ data, onUpdate, onNext, isLoading }: StepLeadProps) => {
   const [errors, setErrors] = useState<Partial<LeadData>>({});
 
   const formatPhone = (value: string) => {
@@ -86,6 +87,7 @@ export const StepLead = ({ data, onUpdate, onNext }: StepLeadProps) => {
               value={data.nome}
               onChange={(e) => onUpdate({ ...data, nome: e.target.value })}
               className="pl-10 h-12 bg-card border-border focus:border-primary focus:ring-primary"
+              disabled={isLoading}
             />
           </div>
           {errors.nome && (
@@ -106,6 +108,7 @@ export const StepLead = ({ data, onUpdate, onNext }: StepLeadProps) => {
               value={data.email}
               onChange={(e) => onUpdate({ ...data, email: e.target.value })}
               className="pl-10 h-12 bg-card border-border focus:border-primary focus:ring-primary"
+              disabled={isLoading}
             />
           </div>
           {errors.email && (
@@ -126,6 +129,7 @@ export const StepLead = ({ data, onUpdate, onNext }: StepLeadProps) => {
               value={data.telefone}
               onChange={handlePhoneChange}
               className="pl-10 h-12 bg-card border-border focus:border-primary focus:ring-primary"
+              disabled={isLoading}
             />
           </div>
           {errors.telefone && (
@@ -135,10 +139,20 @@ export const StepLead = ({ data, onUpdate, onNext }: StepLeadProps) => {
 
         <Button
           type="submit"
+          disabled={isLoading}
           className="w-full h-12 gradient-primary text-primary-foreground font-semibold text-base hover:opacity-90 transition-opacity"
         >
-          Continuar
-          <ArrowRight className="ml-2 w-5 h-5" />
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 w-5 h-5 animate-spin" />
+              Salvando...
+            </>
+          ) : (
+            <>
+              Continuar
+              <ArrowRight className="ml-2 w-5 h-5" />
+            </>
+          )}
         </Button>
       </form>
     </div>
