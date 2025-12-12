@@ -2,8 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Plus, Trash2, User, FileText, MapPin, Building } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { ArrowLeft, Plus, Trash2, User, FileText, MapPin, Building, Loader2 } from "lucide-react";
 
 interface Socio {
   id: string;
@@ -22,6 +21,7 @@ interface StepCompanyFormProps {
   onUpdateIptu: (iptu: string) => void;
   onBack: () => void;
   onSubmit: () => void;
+  isLoading?: boolean;
 }
 
 const createEmptySocio = (): Socio => ({
@@ -41,8 +41,8 @@ export const StepCompanyForm = ({
   onUpdateIptu,
   onBack,
   onSubmit,
+  isLoading,
 }: StepCompanyFormProps) => {
-  const { toast } = useToast();
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const formatCpf = (value: string) => {
@@ -123,10 +123,6 @@ export const StepCompanyForm = ({
     e.preventDefault();
     if (validate()) {
       onSubmit();
-      toast({
-        title: "Cadastro realizado com sucesso!",
-        description: "Em breve entraremos em contato.",
-      });
     }
   };
 
@@ -159,6 +155,7 @@ export const StepCompanyForm = ({
                   size="sm"
                   onClick={() => removeSocio(socio.id)}
                   className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  disabled={isLoading}
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
@@ -175,6 +172,7 @@ export const StepCompanyForm = ({
                     handleSocioChange(socio.id, "nome", e.target.value)
                   }
                   className="h-11 bg-card"
+                  disabled={isLoading}
                 />
                 {errors[`${socio.id}-nome`] && (
                   <p className="text-sm text-destructive">
@@ -195,6 +193,7 @@ export const StepCompanyForm = ({
                     handleSocioChange(socio.id, "rg", e.target.value)
                   }
                   className="h-11 bg-card"
+                  disabled={isLoading}
                 />
                 {errors[`${socio.id}-rg`] && (
                   <p className="text-sm text-destructive">
@@ -212,6 +211,7 @@ export const StepCompanyForm = ({
                     handleSocioChange(socio.id, "cpf", e.target.value)
                   }
                   className="h-11 bg-card"
+                  disabled={isLoading}
                 />
                 {errors[`${socio.id}-cpf`] && (
                   <p className="text-sm text-destructive">
@@ -232,6 +232,7 @@ export const StepCompanyForm = ({
                     handleSocioChange(socio.id, "cep", e.target.value)
                   }
                   className="h-11 bg-card"
+                  disabled={isLoading}
                 />
                 {errors[`${socio.id}-cep`] && (
                   <p className="text-sm text-destructive">
@@ -249,6 +250,7 @@ export const StepCompanyForm = ({
                     handleSocioChange(socio.id, "cidadeUf", e.target.value)
                   }
                   className="h-11 bg-card"
+                  disabled={isLoading}
                 />
                 {errors[`${socio.id}-cidadeUf`] && (
                   <p className="text-sm text-destructive">
@@ -268,6 +270,7 @@ export const StepCompanyForm = ({
                     handleSocioChange(socio.id, "endereco", e.target.value)
                   }
                   className="h-11 bg-card"
+                  disabled={isLoading}
                 />
                 {errors[`${socio.id}-endereco`] && (
                   <p className="text-sm text-destructive">
@@ -284,6 +287,7 @@ export const StepCompanyForm = ({
           variant="outline"
           onClick={addSocio}
           className="w-full h-12 border-dashed border-2 hover:border-primary hover:bg-primary/5"
+          disabled={isLoading}
         >
           <Plus className="mr-2 w-5 h-5" />
           Adicionar outro sócio
@@ -301,6 +305,7 @@ export const StepCompanyForm = ({
               value={iptu}
               onChange={(e) => onUpdateIptu(e.target.value)}
               className="h-11 bg-card"
+              disabled={isLoading}
             />
             {errors["iptu"] && (
               <p className="text-sm text-destructive">{errors["iptu"]}</p>
@@ -314,15 +319,24 @@ export const StepCompanyForm = ({
             variant="outline"
             onClick={onBack}
             className="flex-1 h-12 font-semibold"
+            disabled={isLoading}
           >
             <ArrowLeft className="mr-2 w-5 h-5" />
             Voltar
           </Button>
           <Button
             type="submit"
+            disabled={isLoading}
             className="flex-1 h-12 gradient-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity"
           >
-            Finalizar cadastro
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 w-5 h-5 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              "Finalizar cadastro"
+            )}
           </Button>
         </div>
       </form>

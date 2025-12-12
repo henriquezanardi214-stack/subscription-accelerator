@@ -14,7 +14,141 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      company_formations: {
+        Row: {
+          created_at: string
+          id: string
+          iptu: string
+          lead_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          iptu: string
+          lead_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          iptu?: string
+          lead_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_formations_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          name: string
+          phone: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          name: string
+          phone: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string
+          phone?: string
+        }
+        Relationships: []
+      }
+      partners: {
+        Row: {
+          address: string
+          cep: string
+          city_state: string
+          company_formation_id: string
+          cpf: string
+          created_at: string
+          id: string
+          name: string
+          rg: string
+        }
+        Insert: {
+          address: string
+          cep: string
+          city_state: string
+          company_formation_id: string
+          cpf: string
+          created_at?: string
+          id?: string
+          name: string
+          rg: string
+        }
+        Update: {
+          address?: string
+          cep?: string
+          city_state?: string
+          company_formation_id?: string
+          cpf?: string
+          created_at?: string
+          id?: string
+          name?: string
+          rg?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partners_company_formation_id_fkey"
+            columns: ["company_formation_id"]
+            isOneToOne: false
+            referencedRelation: "company_formations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qualifications: {
+        Row: {
+          area_of_operation: string
+          company_segment: string
+          created_at: string
+          id: string
+          is_qualified: boolean
+          lead_id: string
+          monthly_revenue: string
+        }
+        Insert: {
+          area_of_operation: string
+          company_segment: string
+          created_at?: string
+          id?: string
+          is_qualified?: boolean
+          lead_id: string
+          monthly_revenue: string
+        }
+        Update: {
+          area_of_operation?: string
+          company_segment?: string
+          created_at?: string
+          id?: string
+          is_qualified?: boolean
+          lead_id?: string
+          monthly_revenue?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qualifications_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

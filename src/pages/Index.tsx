@@ -5,6 +5,8 @@ import { StepLead } from "@/components/checkout/StepLead";
 import { StepQualification } from "@/components/checkout/StepQualification";
 import { StepPayment } from "@/components/checkout/StepPayment";
 import { StepCompanyForm } from "@/components/checkout/StepCompanyForm";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const steps = [
   { title: "Seus dados", description: "Informações de contato" },
@@ -25,7 +27,10 @@ interface Socio {
 
 const Index = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
+  const [leadId, setLeadId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Step 1 - Lead Data
   const [leadData, setLeadData] = useState({
@@ -58,28 +63,120 @@ const Index = () => {
   ]);
   const [iptu, setIptu] = useState("");
 
-  const handleNext = () => {
-    setCurrentStep((prev) => Math.min(prev + 1, 4));
+  const handleLeadSubmit = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("leads")
+        .insert({
+          name: leadData.nome,
+          email: leadData.email,
+          phone: leadData.telefone,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setLeadId(data.id);
+      setCurrentStep(2);
+    } catch (error) {
+      console.error("Error saving lead:", error);
+      toast({
+        title: "Erro ao salvar dados",
+        description: "Tente novamente mais tarde.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleQualificationSubmit = async (isQualified: boolean) => {
+    if (!leadId) return;
+
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.from("qualifications").insert({
+        lead_id: leadId,
+        company_segment: qualificationData.segmento,
+        area_of_operation: qualificationData.areaAtuacao,
+        monthly_revenue: qualificationData.faturamento,
+        is_qualified: isQualified,
+      });
+
+      if (error) throw error;
+
+      if (isQualified) {
+        setCurrentStep(3);
+      } else {
+        navigate("/desqualificado");
+      }
+    } catch (error) {
+      console.error("Error saving qualification:", error);
+      toast({
+        title: "Erro ao salvar dados",
+        description: "Tente novamente mais tarde.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleBack = () => {
     setCurrentStep((prev) => Math.max(prev - 1, 1));
   };
 
-  const handleDisqualified = () => {
-    navigate("/desqualificado");
+  const handlePaymentNext = () => {
+    setCurrentStep(4);
   };
 
-  const handleSubmit = () => {
-    // Here you would typically send the data to your backend
-    console.log("Form submitted:", {
-      lead: leadData,
-      qualification: qualificationData,
-      plan: selectedPlan,
-      socios,
-      iptu,
-    });
-    navigate("/sucesso");
+  const handleSubmit = async () => {
+    if (!leadId) return;
+
+    setIsLoading(true);
+    try {
+      // Create company formation record
+      const { data: formationData, error: formationError } = await supabase
+        .from("company_formations")
+        .insert({
+          lead_id: leadId,
+          iptu: iptu,
+        })
+        .select()
+        .single();
+
+      if (formationError) throw formationError;
+
+      // Insert all partners
+      const partnersToInsert = socios.map((socio) => ({
+        company_formation_id: formationData.id,
+        name: socio.nome,
+        rg: socio.rg,
+        cpf: socio.cpf.replace(/\D/g, ""),
+        cep: socio.cep.replace(/\D/g, ""),
+        address: socio.endereco,
+        city_state: socio.cidadeUf,
+      }));
+
+      const { error: partnersError } = await supabase
+        .from("partners")
+        .insert(partnersToInsert);
+
+      if (partnersError) throw partnersError;
+
+      navigate("/sucesso");
+    } catch (error) {
+      console.error("Error saving company data:", error);
+      toast({
+        title: "Erro ao salvar dados",
+        description: "Tente novamente mais tarde.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -105,7 +202,8 @@ const Index = () => {
               <StepLead
                 data={leadData}
                 onUpdate={setLeadData}
-                onNext={handleNext}
+                onNext={handleLeadSubmit}
+                isLoading={isLoading}
               />
             )}
 
@@ -113,9 +211,9 @@ const Index = () => {
               <StepQualification
                 data={qualificationData}
                 onUpdate={setQualificationData}
-                onNext={handleNext}
+                onSubmit={handleQualificationSubmit}
                 onBack={handleBack}
-                onDisqualified={handleDisqualified}
+                isLoading={isLoading}
               />
             )}
 
@@ -123,7 +221,7 @@ const Index = () => {
               <StepPayment
                 selectedPlan={selectedPlan}
                 onSelectPlan={setSelectedPlan}
-                onNext={handleNext}
+                onNext={handlePaymentNext}
                 onBack={handleBack}
               />
             )}
@@ -136,6 +234,7 @@ const Index = () => {
                 onUpdateIptu={setIptu}
                 onBack={handleBack}
                 onSubmit={handleSubmit}
+                isLoading={isLoading}
               />
             )}
           </div>
