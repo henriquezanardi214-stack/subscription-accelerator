@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Plus, Trash2, User, FileText, MapPin, Building, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, User, FileText, MapPin, Building, Loader2, Search } from "lucide-react";
+import { useCepLookup } from "@/hooks/useCepLookup";
 
 interface Socio {
   id: string;
@@ -44,6 +45,8 @@ export const StepCompanyForm = ({
   isLoading,
 }: StepCompanyFormProps) => {
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loadingCep, setLoadingCep] = useState<string | null>(null);
+  const { lookupCep } = useCepLookup();
 
   const formatCpf = (value: string) => {
     const numbers = value.replace(/\D/g, "");
@@ -58,6 +61,28 @@ export const StepCompanyForm = ({
     const numbers = value.replace(/\D/g, "");
     if (numbers.length <= 5) return numbers;
     return `${numbers.slice(0, 5)}-${numbers.slice(5, 8)}`;
+  };
+
+  const handleCepBlur = async (socioId: string, cep: string) => {
+    const cleanCep = cep.replace(/\D/g, "");
+    if (cleanCep.length !== 8) return;
+
+    setLoadingCep(socioId);
+    const address = await lookupCep(cep);
+    setLoadingCep(null);
+
+    if (address) {
+      const updated = socios.map((s) =>
+        s.id === socioId
+          ? {
+              ...s,
+              endereco: address.logradouro ? `${address.logradouro}, ${address.bairro}` : s.endereco,
+              cidadeUf: address.cidadeUf,
+            }
+          : s
+      );
+      onUpdateSocios(updated);
+    }
   };
 
   const handleSocioChange = (id: string, field: keyof Socio, value: string) => {
@@ -90,7 +115,7 @@ export const StepCompanyForm = ({
   const validate = () => {
     const newErrors: Record<string, string> = {};
 
-    socios.forEach((socio, index) => {
+    socios.forEach((socio) => {
       if (!socio.nome.trim()) {
         newErrors[`${socio.id}-nome`] = "Nome é obrigatório";
       }
@@ -223,17 +248,25 @@ export const StepCompanyForm = ({
               <div className="space-y-2">
                 <Label className="text-foreground flex items-center gap-2">
                   <MapPin className="w-3 h-3" />
-                  CEP (Apenas números)
+                  CEP
                 </Label>
-                <Input
-                  placeholder="00000-000"
-                  value={socio.cep}
-                  onChange={(e) =>
-                    handleSocioChange(socio.id, "cep", e.target.value)
-                  }
-                  className="h-11 bg-card"
-                  disabled={isLoading}
-                />
+                <div className="relative">
+                  <Input
+                    placeholder="00000-000"
+                    value={socio.cep}
+                    onChange={(e) =>
+                      handleSocioChange(socio.id, "cep", e.target.value)
+                    }
+                    onBlur={(e) => handleCepBlur(socio.id, e.target.value)}
+                    className="h-11 bg-card pr-10"
+                    disabled={isLoading}
+                  />
+                  {loadingCep === socio.id ? (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  )}
+                </div>
                 {errors[`${socio.id}-cep`] && (
                   <p className="text-sm text-destructive">
                     {errors[`${socio.id}-cep`]}

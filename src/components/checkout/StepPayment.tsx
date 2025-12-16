@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Check, X, ArrowRight, CreditCard, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, X, ArrowRight, CreditCard, Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCepLookup } from "@/hooks/useCepLookup";
 
 interface CreditCardData {
   holderName: string;
@@ -96,6 +97,8 @@ export const StepPayment = ({
   isLoading = false,
 }: StepPaymentProps) => {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [loadingCep, setLoadingCep] = useState(false);
+  const { lookupCep } = useCepLookup();
   const [creditCard, setCreditCard] = useState<CreditCardData>({
     holderName: "",
     number: "",
@@ -108,6 +111,20 @@ export const StepPayment = ({
     postalCode: "",
     addressNumber: "",
   });
+
+  const handleCepBlur = async (cep: string) => {
+    const cleanCep = cep.replace(/\D/g, "");
+    if (cleanCep.length !== 8) return;
+
+    setLoadingCep(true);
+    const address = await lookupCep(cep);
+    setLoadingCep(false);
+
+    if (address) {
+      // Auto-fill address number hint if available
+      console.log("Endereço encontrado:", address.logradouro, address.cidadeUf);
+    }
+  };
 
   const formatCardNumber = (value: string) => {
     const cleaned = value.replace(/\D/g, "");
@@ -292,19 +309,27 @@ export const StepPayment = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="postalCode">CEP</Label>
-                  <Input
-                    id="postalCode"
-                    placeholder="00000-000"
-                    value={cardHolderInfo.postalCode}
-                    onChange={(e) =>
-                      setCardHolderInfo({
-                        ...cardHolderInfo,
-                        postalCode: formatCEP(e.target.value),
-                      })
-                    }
-                    maxLength={9}
-                    className="mt-1"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="postalCode"
+                      placeholder="00000-000"
+                      value={cardHolderInfo.postalCode}
+                      onChange={(e) =>
+                        setCardHolderInfo({
+                          ...cardHolderInfo,
+                          postalCode: formatCEP(e.target.value),
+                        })
+                      }
+                      onBlur={(e) => handleCepBlur(e.target.value)}
+                      maxLength={9}
+                      className="mt-1 pr-10"
+                    />
+                    {loadingCep ? (
+                      <Loader2 className="absolute right-3 top-1/2 translate-y-[-25%] w-4 h-4 animate-spin text-muted-foreground" />
+                    ) : (
+                      <Search className="absolute right-3 top-1/2 translate-y-[-25%] w-4 h-4 text-muted-foreground" />
+                    )}
+                  </div>
                 </div>
                 <div>
                   <Label htmlFor="addressNumber">Número</Label>
