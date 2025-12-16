@@ -1,12 +1,30 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Check, X, ArrowRight } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft, Check, X, ArrowRight, CreditCard, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface CreditCardData {
+  holderName: string;
+  number: string;
+  expiryMonth: string;
+  expiryYear: string;
+  ccv: string;
+}
+
+interface CardHolderInfo {
+  cpf: string;
+  postalCode: string;
+  addressNumber: string;
+}
 
 interface StepPaymentProps {
   selectedPlan: string;
   onSelectPlan: (plan: string) => void;
-  onNext: () => void;
+  onNext: (creditCard: CreditCardData, cardHolderInfo: CardHolderInfo) => void;
   onBack: () => void;
+  isLoading?: boolean;
 }
 
 const plans = [
@@ -75,7 +93,270 @@ export const StepPayment = ({
   onSelectPlan,
   onNext,
   onBack,
+  isLoading = false,
 }: StepPaymentProps) => {
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [creditCard, setCreditCard] = useState<CreditCardData>({
+    holderName: "",
+    number: "",
+    expiryMonth: "",
+    expiryYear: "",
+    ccv: "",
+  });
+  const [cardHolderInfo, setCardHolderInfo] = useState<CardHolderInfo>({
+    cpf: "",
+    postalCode: "",
+    addressNumber: "",
+  });
+
+  const formatCardNumber = (value: string) => {
+    const cleaned = value.replace(/\D/g, "");
+    const groups = cleaned.match(/.{1,4}/g);
+    return groups ? groups.join(" ").substring(0, 19) : "";
+  };
+
+  const formatCPF = (value: string) => {
+    const cleaned = value.replace(/\D/g, "");
+    if (cleaned.length <= 11) {
+      return cleaned
+        .replace(/(\d{3})(\d)/, "$1.$2")
+        .replace(/(\d{3})(\d)/, "$1.$2")
+        .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+    }
+    return cleaned
+      .replace(/(\d{2})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1/$2")
+      .replace(/(\d{4})(\d{1,2})$/, "$1-$2");
+  };
+
+  const formatCEP = (value: string) => {
+    const cleaned = value.replace(/\D/g, "");
+    return cleaned.replace(/(\d{5})(\d)/, "$1-$2").substring(0, 9);
+  };
+
+  const handleContinueToPayment = () => {
+    if (selectedPlan) {
+      setShowPaymentForm(true);
+    }
+  };
+
+  const handleSubmitPayment = () => {
+    if (
+      creditCard.holderName &&
+      creditCard.number &&
+      creditCard.expiryMonth &&
+      creditCard.expiryYear &&
+      creditCard.ccv &&
+      cardHolderInfo.cpf &&
+      cardHolderInfo.postalCode &&
+      cardHolderInfo.addressNumber
+    ) {
+      onNext(creditCard, cardHolderInfo);
+    }
+  };
+
+  const isPaymentFormValid =
+    creditCard.holderName.length > 3 &&
+    creditCard.number.replace(/\s/g, "").length >= 13 &&
+    creditCard.expiryMonth.length === 2 &&
+    creditCard.expiryYear.length === 4 &&
+    creditCard.ccv.length >= 3 &&
+    cardHolderInfo.cpf.replace(/\D/g, "").length >= 11 &&
+    cardHolderInfo.postalCode.replace(/\D/g, "").length === 8 &&
+    cardHolderInfo.addressNumber.length > 0;
+
+  if (showPaymentForm) {
+    const selectedPlanData = plans.find((p) => p.id === selectedPlan);
+
+    return (
+      <div className="animate-slide-up">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
+            Dados do Pagamento
+          </h2>
+          <p className="text-muted-foreground">
+            Plano {selectedPlanData?.name} - R$ {selectedPlanData?.price}/mês
+          </p>
+        </div>
+
+        <div className="space-y-6">
+          <div className="p-4 rounded-lg bg-secondary/30 border border-border">
+            <div className="flex items-center gap-2 mb-4">
+              <CreditCard className="w-5 h-5 text-primary" />
+              <span className="font-semibold text-foreground">Cartão de Crédito</span>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="holderName">Nome no Cartão</Label>
+                <Input
+                  id="holderName"
+                  placeholder="Nome como está no cartão"
+                  value={creditCard.holderName}
+                  onChange={(e) =>
+                    setCreditCard({ ...creditCard, holderName: e.target.value.toUpperCase() })
+                  }
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="cardNumber">Número do Cartão</Label>
+                <Input
+                  id="cardNumber"
+                  placeholder="0000 0000 0000 0000"
+                  value={creditCard.number}
+                  onChange={(e) =>
+                    setCreditCard({ ...creditCard, number: formatCardNumber(e.target.value) })
+                  }
+                  maxLength={19}
+                  className="mt-1"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="expiryMonth">Mês</Label>
+                  <Input
+                    id="expiryMonth"
+                    placeholder="MM"
+                    value={creditCard.expiryMonth}
+                    onChange={(e) =>
+                      setCreditCard({
+                        ...creditCard,
+                        expiryMonth: e.target.value.replace(/\D/g, "").substring(0, 2),
+                      })
+                    }
+                    maxLength={2}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="expiryYear">Ano</Label>
+                  <Input
+                    id="expiryYear"
+                    placeholder="AAAA"
+                    value={creditCard.expiryYear}
+                    onChange={(e) =>
+                      setCreditCard({
+                        ...creditCard,
+                        expiryYear: e.target.value.replace(/\D/g, "").substring(0, 4),
+                      })
+                    }
+                    maxLength={4}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="ccv">CVV</Label>
+                  <Input
+                    id="ccv"
+                    placeholder="123"
+                    type="password"
+                    value={creditCard.ccv}
+                    onChange={(e) =>
+                      setCreditCard({
+                        ...creditCard,
+                        ccv: e.target.value.replace(/\D/g, "").substring(0, 4),
+                      })
+                    }
+                    maxLength={4}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-lg bg-secondary/30 border border-border">
+            <span className="font-semibold text-foreground mb-4 block">
+              Dados do Titular
+            </span>
+
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="cpf">CPF/CNPJ</Label>
+                <Input
+                  id="cpf"
+                  placeholder="000.000.000-00"
+                  value={cardHolderInfo.cpf}
+                  onChange={(e) =>
+                    setCardHolderInfo({ ...cardHolderInfo, cpf: formatCPF(e.target.value) })
+                  }
+                  maxLength={18}
+                  className="mt-1"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="postalCode">CEP</Label>
+                  <Input
+                    id="postalCode"
+                    placeholder="00000-000"
+                    value={cardHolderInfo.postalCode}
+                    onChange={(e) =>
+                      setCardHolderInfo({
+                        ...cardHolderInfo,
+                        postalCode: formatCEP(e.target.value),
+                      })
+                    }
+                    maxLength={9}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="addressNumber">Número</Label>
+                  <Input
+                    id="addressNumber"
+                    placeholder="123"
+                    value={cardHolderInfo.addressNumber}
+                    onChange={(e) =>
+                      setCardHolderInfo({ ...cardHolderInfo, addressNumber: e.target.value })
+                    }
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-4 mt-8">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowPaymentForm(false)}
+            className="flex-1 h-12 font-semibold"
+            disabled={isLoading}
+          >
+            <ArrowLeft className="mr-2 w-5 h-5" />
+            Voltar
+          </Button>
+          <Button
+            type="button"
+            disabled={!isPaymentFormValid || isLoading}
+            onClick={handleSubmitPayment}
+            className="flex-1 h-12 gradient-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 w-5 h-5 animate-spin" />
+                Processando...
+              </>
+            ) : (
+              <>
+                Finalizar Pagamento
+                <ArrowRight className="ml-2 w-5 h-5" />
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="animate-slide-up">
       <div className="text-center mb-8">
@@ -176,7 +457,7 @@ export const StepPayment = ({
         <Button
           type="button"
           disabled={!selectedPlan}
-          onClick={onNext}
+          onClick={handleContinueToPayment}
           className="flex-1 h-12 gradient-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           Continuar
@@ -186,3 +467,5 @@ export const StepPayment = ({
     </div>
   );
 };
+
+export { plans };
