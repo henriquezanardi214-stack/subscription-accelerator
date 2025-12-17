@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Plus, Trash2, User, FileText, MapPin, Building, Loader2, Search } from "lucide-react";
 import { useCepLookup } from "@/hooks/useCepLookup";
+import { validateCpf, formatCpf } from "@/lib/cpf";
 
 interface Socio {
   id: string;
@@ -48,13 +49,8 @@ export const StepCompanyForm = ({
   const [loadingCep, setLoadingCep] = useState<string | null>(null);
   const { lookupCep } = useCepLookup();
 
-  const formatCpf = (value: string) => {
-    const numbers = value.replace(/\D/g, "");
-    if (numbers.length <= 3) return numbers;
-    if (numbers.length <= 6) return `${numbers.slice(0, 3)}.${numbers.slice(3)}`;
-    if (numbers.length <= 9)
-      return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6)}`;
-    return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6, 9)}-${numbers.slice(9, 11)}`;
+  const handleCpfFormat = (value: string) => {
+    return formatCpf(value);
   };
 
   const formatCep = (value: string) => {
@@ -89,7 +85,7 @@ export const StepCompanyForm = ({
     let formattedValue = value;
     
     if (field === "cpf") {
-      formattedValue = formatCpf(value);
+      formattedValue = handleCpfFormat(value);
     } else if (field === "cep") {
       formattedValue = formatCep(value);
     } else if (field === "rg") {
@@ -122,7 +118,7 @@ export const StepCompanyForm = ({
       if (!socio.rg.trim()) {
         newErrors[`${socio.id}-rg`] = "RG é obrigatório";
       }
-      if (!socio.cpf.trim() || socio.cpf.replace(/\D/g, "").length !== 11) {
+      if (!socio.cpf.trim() || !validateCpf(socio.cpf)) {
         newErrors[`${socio.id}-cpf`] = "CPF inválido";
       }
       if (!socio.cep.trim() || socio.cep.replace(/\D/g, "").length !== 8) {
