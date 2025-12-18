@@ -8,6 +8,8 @@ const corsHeaders = {
 const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY');
 const ASAAS_BASE_URL = 'https://api.asaas.com/v3';
 
+type BillingType = 'CREDIT_CARD' | 'BOLETO' | 'PIX';
+
 interface CustomerData {
   name: string;
   email: string;
@@ -34,8 +36,9 @@ interface CreditCardHolderInfo {
 
 interface SubscriptionRequest {
   customer: CustomerData;
-  creditCard: CreditCardData;
-  creditCardHolderInfo: CreditCardHolderInfo;
+  billingType: BillingType;
+  creditCard?: CreditCardData;
+  creditCardHolderInfo?: CreditCardHolderInfo;
   planId: string;
   planValue: number;
   remoteIp: string;
@@ -72,41 +75,46 @@ async function createCustomer(customerData: CustomerData) {
 async function createSubscription(
   customerId: string,
   planValue: number,
-  creditCard: CreditCardData,
-  creditCardHolderInfo: CreditCardHolderInfo,
-  remoteIp: string
+  billingType: BillingType,
+  creditCard?: CreditCardData,
+  creditCardHolderInfo?: CreditCardHolderInfo,
+  remoteIp?: string
 ) {
-  console.log('Creating subscription for customer:', customerId);
+  console.log('Creating subscription for customer:', customerId, 'with billing type:', billingType);
   
   // Calculate next due date (today or tomorrow)
   const nextDueDate = new Date();
   nextDueDate.setDate(nextDueDate.getDate() + 1);
   const formattedDate = nextDueDate.toISOString().split('T')[0];
 
-  const subscriptionData = {
+  const subscriptionData: Record<string, unknown> = {
     customer: customerId,
-    billingType: 'CREDIT_CARD',
+    billingType: billingType,
     nextDueDate: formattedDate,
     value: planValue,
     cycle: 'MONTHLY',
     description: 'Plano de Contabilidade',
-    creditCard: {
+  };
+
+  // Add credit card data only for credit card payments
+  if (billingType === 'CREDIT_CARD' && creditCard && creditCardHolderInfo) {
+    subscriptionData.creditCard = {
       holderName: creditCard.holderName,
       number: creditCard.number.replace(/\s/g, ''),
       expiryMonth: creditCard.expiryMonth,
       expiryYear: creditCard.expiryYear,
       ccv: creditCard.ccv,
-    },
-    creditCardHolderInfo: {
+    };
+    subscriptionData.creditCardHolderInfo = {
       name: creditCardHolderInfo.name,
       email: creditCardHolderInfo.email,
       cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
       postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
       addressNumber: creditCardHolderInfo.addressNumber,
       phone: creditCardHolderInfo.phone.replace(/\D/g, ''),
-    },
-    remoteIp: remoteIp,
-  };
+    };
+    subscriptionData.remoteIp = remoteIp || '0.0.0.0';
+  }
 
   const response = await fetch(`${ASAAS_BASE_URL}/subscriptions`, {
     method: 'POST',
@@ -136,23 +144,29 @@ serve(async (req) => {
 
   try {
     const requestData: SubscriptionRequest = await req.json();
-    console.log('Processing subscription request for:', requestData.customer.email);
+    console.log('Processing subscription request for:', requestData.customer.email, 'billing type:', requestData.billingType);
 
     // Validate required fields
-    if (!requestData.customer || !requestData.creditCard || !requestData.planValue) {
+    if (!requestData.customer || !requestData.planValue || !requestData.billingType) {
       throw new Error('Dados incompletos para criar a assinatura');
+    }
+
+    // Validate credit card data for credit card billing
+    if (requestData.billingType === 'CREDIT_CARD' && (!requestData.creditCard || !requestData.creditCardHolderInfo)) {
+      throw new Error('Dados do cartão de crédito são obrigatórios');
     }
 
     // Create customer in Asaas
     const customer = await createCustomer(requestData.customer);
 
-    // Create subscription with credit card
+    // Create subscription with appropriate billing type
     const subscription = await createSubscription(
       customer.id,
       requestData.planValue,
+      requestData.billingType,
       requestData.creditCard,
       requestData.creditCardHolderInfo,
-      requestData.remoteIp || '0.0.0.0'
+      requestData.remoteIp
     );
 
     return new Response(
@@ -161,6 +175,10 @@ serve(async (req) => {
         customerId: customer.id,
         subscriptionId: subscription.id,
         status: subscription.status,
+        billingType: requestData.billingType,
+        // Include payment info for boleto/pix
+        ...(requestData.billingType === 'BOLETO' && subscription.bankSlipUrl && { bankSlipUrl: subscription.bankSlipUrl }),
+        ...(requestData.billingType === 'PIX' && subscription.pixQrCodeUrl && { pixQrCodeUrl: subscription.pixQrCodeUrl }),
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

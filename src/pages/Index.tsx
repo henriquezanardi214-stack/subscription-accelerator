@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Stepper } from "@/components/checkout/Stepper";
 import { StepLead } from "@/components/checkout/StepLead";
 import { StepQualification } from "@/components/checkout/StepQualification";
-import { StepPayment, plans } from "@/components/checkout/StepPayment";
+import { StepPayment, plans, PaymentData } from "@/components/checkout/StepPayment";
 import { StepCompanyForm } from "@/components/checkout/StepCompanyForm";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -23,20 +23,6 @@ interface Socio {
   cep: string;
   endereco: string;
   cidadeUf: string;
-}
-
-interface CreditCardData {
-  holderName: string;
-  number: string;
-  expiryMonth: string;
-  expiryYear: string;
-  ccv: string;
-}
-
-interface CardHolderInfo {
-  cpf: string;
-  postalCode: string;
-  addressNumber: string;
 }
 
 const Index = () => {
@@ -142,39 +128,46 @@ const Index = () => {
     setCurrentStep((prev) => Math.max(prev - 1, 1));
   };
 
-  const handlePaymentNext = async (creditCard: CreditCardData, cardHolderInfo: CardHolderInfo) => {
+  const handlePaymentNext = async (paymentData: PaymentData) => {
     setIsLoading(true);
     try {
       const selectedPlanData = plans.find((p) => p.id === selectedPlan);
       if (!selectedPlanData) throw new Error("Plano não selecionado");
 
-      const response = await supabase.functions.invoke("create-subscription", {
-        body: {
-          customer: {
-            name: leadData.nome,
-            email: leadData.email,
-            phone: leadData.telefone,
-            cpfCnpj: cardHolderInfo.cpf,
-          },
-          creditCard: {
-            holderName: creditCard.holderName,
-            number: creditCard.number,
-            expiryMonth: creditCard.expiryMonth,
-            expiryYear: creditCard.expiryYear,
-            ccv: creditCard.ccv,
-          },
-          creditCardHolderInfo: {
-            name: creditCard.holderName,
-            email: leadData.email,
-            cpfCnpj: cardHolderInfo.cpf,
-            postalCode: cardHolderInfo.postalCode,
-            addressNumber: cardHolderInfo.addressNumber,
-            phone: leadData.telefone,
-          },
-          planId: selectedPlan,
-          planValue: selectedPlanData.price,
-          remoteIp: "0.0.0.0",
+      const requestBody: Record<string, unknown> = {
+        customer: {
+          name: leadData.nome,
+          email: leadData.email,
+          phone: leadData.telefone,
+          cpfCnpj: paymentData.cardHolderInfo?.cpf || "",
         },
+        billingType: paymentData.paymentMethod,
+        planId: selectedPlan,
+        planValue: selectedPlanData.price,
+        remoteIp: "0.0.0.0",
+      };
+
+      // Add credit card data only for credit card payments
+      if (paymentData.paymentMethod === "CREDIT_CARD" && paymentData.creditCard && paymentData.cardHolderInfo) {
+        requestBody.creditCard = {
+          holderName: paymentData.creditCard.holderName,
+          number: paymentData.creditCard.number,
+          expiryMonth: paymentData.creditCard.expiryMonth,
+          expiryYear: paymentData.creditCard.expiryYear,
+          ccv: paymentData.creditCard.ccv,
+        };
+        requestBody.creditCardHolderInfo = {
+          name: paymentData.creditCard.holderName,
+          email: leadData.email,
+          cpfCnpj: paymentData.cardHolderInfo.cpf,
+          postalCode: paymentData.cardHolderInfo.postalCode,
+          addressNumber: paymentData.cardHolderInfo.addressNumber,
+          phone: leadData.telefone,
+        };
+      }
+
+      const response = await supabase.functions.invoke("create-subscription", {
+        body: requestBody,
       });
 
       if (response.error) {
@@ -186,9 +179,15 @@ const Index = () => {
         throw new Error(data.error || "Erro ao processar pagamento");
       }
 
+      const successMessage = paymentData.paymentMethod === "CREDIT_CARD" 
+        ? "Sua assinatura foi criada com sucesso."
+        : paymentData.paymentMethod === "BOLETO"
+          ? "Boleto gerado! Verifique seu e-mail."
+          : "QR Code PIX gerado! Verifique seu e-mail.";
+
       toast({
-        title: "Pagamento aprovado!",
-        description: "Sua assinatura foi criada com sucesso.",
+        title: paymentData.paymentMethod === "CREDIT_CARD" ? "Pagamento aprovado!" : "Cobrança criada!",
+        description: successMessage,
       });
 
       setCurrentStep(4);
@@ -196,7 +195,7 @@ const Index = () => {
       console.error("Error processing payment:", error);
       toast({
         title: "Erro no pagamento",
-        description: error instanceof Error ? error.message : "Erro ao processar pagamento. Verifique os dados do cartão.",
+        description: error instanceof Error ? error.message : "Erro ao processar pagamento.",
         variant: "destructive",
       });
     } finally {
