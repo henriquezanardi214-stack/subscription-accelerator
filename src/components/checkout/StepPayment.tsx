@@ -2,9 +2,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Check, X, ArrowRight, CreditCard, Loader2, Search } from "lucide-react";
+import { ArrowLeft, Check, X, ArrowRight, CreditCard, Loader2, Search, QrCode, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCepLookup } from "@/hooks/useCepLookup";
+
+export type PaymentMethod = "CREDIT_CARD" | "BOLETO" | "PIX";
 
 interface CreditCardData {
   holderName: string;
@@ -20,10 +22,16 @@ interface CardHolderInfo {
   addressNumber: string;
 }
 
+export interface PaymentData {
+  paymentMethod: PaymentMethod;
+  creditCard?: CreditCardData;
+  cardHolderInfo?: CardHolderInfo;
+}
+
 interface StepPaymentProps {
   selectedPlan: string;
   onSelectPlan: (plan: string) => void;
-  onNext: (creditCard: CreditCardData, cardHolderInfo: CardHolderInfo) => void;
+  onNext: (paymentData: PaymentData) => void;
   onBack: () => void;
   isLoading?: boolean;
 }
@@ -89,6 +97,12 @@ const plans = [
   },
 ];
 
+const paymentMethods = [
+  { id: "CREDIT_CARD" as PaymentMethod, name: "Cartão de Crédito", icon: CreditCard, description: "Pagamento recorrente mensal" },
+  { id: "BOLETO" as PaymentMethod, name: "Boleto Bancário", icon: FileText, description: "Vencimento em 3 dias úteis" },
+  { id: "PIX" as PaymentMethod, name: "PIX", icon: QrCode, description: "Pagamento instantâneo" },
+];
+
 export const StepPayment = ({
   selectedPlan,
   onSelectPlan,
@@ -97,6 +111,7 @@ export const StepPayment = ({
   isLoading = false,
 }: StepPaymentProps) => {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>("CREDIT_CARD");
   const [loadingCep, setLoadingCep] = useState(false);
   const { lookupCep } = useCepLookup();
   const [creditCard, setCreditCard] = useState<CreditCardData>({
@@ -159,21 +174,26 @@ export const StepPayment = ({
   };
 
   const handleSubmitPayment = () => {
-    if (
-      creditCard.holderName &&
-      creditCard.number &&
-      creditCard.expiryMonth &&
-      creditCard.expiryYear &&
-      creditCard.ccv &&
-      cardHolderInfo.cpf &&
-      cardHolderInfo.postalCode &&
-      cardHolderInfo.addressNumber
-    ) {
-      onNext(creditCard, cardHolderInfo);
+    if (selectedPaymentMethod === "CREDIT_CARD") {
+      if (
+        creditCard.holderName &&
+        creditCard.number &&
+        creditCard.expiryMonth &&
+        creditCard.expiryYear &&
+        creditCard.ccv &&
+        cardHolderInfo.cpf &&
+        cardHolderInfo.postalCode &&
+        cardHolderInfo.addressNumber
+      ) {
+        onNext({ paymentMethod: selectedPaymentMethod, creditCard, cardHolderInfo });
+      }
+    } else {
+      // Boleto or PIX - just need the payment method
+      onNext({ paymentMethod: selectedPaymentMethod });
     }
   };
 
-  const isPaymentFormValid =
+  const isCreditCardFormValid =
     creditCard.holderName.length > 3 &&
     creditCard.number.replace(/\s/g, "").length >= 13 &&
     creditCard.expiryMonth.length === 2 &&
@@ -182,6 +202,8 @@ export const StepPayment = ({
     cardHolderInfo.cpf.replace(/\D/g, "").length >= 11 &&
     cardHolderInfo.postalCode.replace(/\D/g, "").length === 8 &&
     cardHolderInfo.addressNumber.length > 0;
+
+  const isPaymentFormValid = selectedPaymentMethod === "CREDIT_CARD" ? isCreditCardFormValid : true;
 
   if (showPaymentForm) {
     const selectedPlanData = plans.find((p) => p.id === selectedPlan);
@@ -198,154 +220,215 @@ export const StepPayment = ({
         </div>
 
         <div className="space-y-6">
-          <div className="p-4 rounded-lg bg-secondary/30 border border-border">
-            <div className="flex items-center gap-2 mb-4">
-              <CreditCard className="w-5 h-5 text-primary" />
-              <span className="font-semibold text-foreground">Cartão de Crédito</span>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="holderName">Nome no Cartão</Label>
-                <Input
-                  id="holderName"
-                  placeholder="Nome como está no cartão"
-                  value={creditCard.holderName}
-                  onChange={(e) =>
-                    setCreditCard({ ...creditCard, holderName: e.target.value.toUpperCase() })
-                  }
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="cardNumber">Número do Cartão</Label>
-                <Input
-                  id="cardNumber"
-                  placeholder="0000 0000 0000 0000"
-                  value={creditCard.number}
-                  onChange={(e) =>
-                    setCreditCard({ ...creditCard, number: formatCardNumber(e.target.value) })
-                  }
-                  maxLength={19}
-                  className="mt-1"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="expiryMonth">Mês</Label>
-                  <Input
-                    id="expiryMonth"
-                    placeholder="MM"
-                    value={creditCard.expiryMonth}
-                    onChange={(e) =>
-                      setCreditCard({
-                        ...creditCard,
-                        expiryMonth: e.target.value.replace(/\D/g, "").substring(0, 2),
-                      })
-                    }
-                    maxLength={2}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="expiryYear">Ano</Label>
-                  <Input
-                    id="expiryYear"
-                    placeholder="AAAA"
-                    value={creditCard.expiryYear}
-                    onChange={(e) =>
-                      setCreditCard({
-                        ...creditCard,
-                        expiryYear: e.target.value.replace(/\D/g, "").substring(0, 4),
-                      })
-                    }
-                    maxLength={4}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ccv">CVV</Label>
-                  <Input
-                    id="ccv"
-                    placeholder="123"
-                    type="password"
-                    value={creditCard.ccv}
-                    onChange={(e) =>
-                      setCreditCard({
-                        ...creditCard,
-                        ccv: e.target.value.replace(/\D/g, "").substring(0, 4),
-                      })
-                    }
-                    maxLength={4}
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-            </div>
+          {/* Payment Method Selection */}
+          <div className="grid grid-cols-3 gap-3">
+            {paymentMethods.map((method) => {
+              const Icon = method.icon;
+              return (
+                <button
+                  key={method.id}
+                  type="button"
+                  onClick={() => setSelectedPaymentMethod(method.id)}
+                  className={cn(
+                    "p-4 rounded-lg border-2 transition-all duration-200 text-center",
+                    selectedPaymentMethod === method.id
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:border-primary/50 bg-card"
+                  )}
+                >
+                  <Icon className={cn(
+                    "w-6 h-6 mx-auto mb-2",
+                    selectedPaymentMethod === method.id ? "text-primary" : "text-muted-foreground"
+                  )} />
+                  <span className={cn(
+                    "text-sm font-medium block",
+                    selectedPaymentMethod === method.id ? "text-foreground" : "text-muted-foreground"
+                  )}>
+                    {method.name}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{method.description}</span>
+                </button>
+              );
+            })}
           </div>
 
-          <div className="p-4 rounded-lg bg-secondary/30 border border-border">
-            <span className="font-semibold text-foreground mb-4 block">
-              Dados do Titular
-            </span>
+          {/* Credit Card Form */}
+          {selectedPaymentMethod === "CREDIT_CARD" && (
+            <>
+              <div className="p-4 rounded-lg bg-secondary/30 border border-border">
+                <div className="flex items-center gap-2 mb-4">
+                  <CreditCard className="w-5 h-5 text-primary" />
+                  <span className="font-semibold text-foreground">Dados do Cartão</span>
+                </div>
 
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="cpf">CPF/CNPJ</Label>
-                <Input
-                  id="cpf"
-                  placeholder="000.000.000-00"
-                  value={cardHolderInfo.cpf}
-                  onChange={(e) =>
-                    setCardHolderInfo({ ...cardHolderInfo, cpf: formatCPF(e.target.value) })
-                  }
-                  maxLength={18}
-                  className="mt-1"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="postalCode">CEP</Label>
-                  <div className="relative">
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="holderName">Nome no Cartão</Label>
                     <Input
-                      id="postalCode"
-                      placeholder="00000-000"
-                      value={cardHolderInfo.postalCode}
+                      id="holderName"
+                      placeholder="Nome como está no cartão"
+                      value={creditCard.holderName}
                       onChange={(e) =>
-                        setCardHolderInfo({
-                          ...cardHolderInfo,
-                          postalCode: formatCEP(e.target.value),
-                        })
+                        setCreditCard({ ...creditCard, holderName: e.target.value.toUpperCase() })
                       }
-                      onBlur={(e) => handleCepBlur(e.target.value)}
-                      maxLength={9}
-                      className="mt-1 pr-10"
+                      className="mt-1"
                     />
-                    {loadingCep ? (
-                      <Loader2 className="absolute right-3 top-1/2 translate-y-[-25%] w-4 h-4 animate-spin text-muted-foreground" />
-                    ) : (
-                      <Search className="absolute right-3 top-1/2 translate-y-[-25%] w-4 h-4 text-muted-foreground" />
-                    )}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="cardNumber">Número do Cartão</Label>
+                    <Input
+                      id="cardNumber"
+                      placeholder="0000 0000 0000 0000"
+                      value={creditCard.number}
+                      onChange={(e) =>
+                        setCreditCard({ ...creditCard, number: formatCardNumber(e.target.value) })
+                      }
+                      maxLength={19}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <Label htmlFor="expiryMonth">Mês</Label>
+                      <Input
+                        id="expiryMonth"
+                        placeholder="MM"
+                        value={creditCard.expiryMonth}
+                        onChange={(e) =>
+                          setCreditCard({
+                            ...creditCard,
+                            expiryMonth: e.target.value.replace(/\D/g, "").substring(0, 2),
+                          })
+                        }
+                        maxLength={2}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="expiryYear">Ano</Label>
+                      <Input
+                        id="expiryYear"
+                        placeholder="AAAA"
+                        value={creditCard.expiryYear}
+                        onChange={(e) =>
+                          setCreditCard({
+                            ...creditCard,
+                            expiryYear: e.target.value.replace(/\D/g, "").substring(0, 4),
+                          })
+                        }
+                        maxLength={4}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="ccv">CVV</Label>
+                      <Input
+                        id="ccv"
+                        placeholder="123"
+                        type="password"
+                        value={creditCard.ccv}
+                        onChange={(e) =>
+                          setCreditCard({
+                            ...creditCard,
+                            ccv: e.target.value.replace(/\D/g, "").substring(0, 4),
+                          })
+                        }
+                        maxLength={4}
+                        className="mt-1"
+                      />
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <Label htmlFor="addressNumber">Número</Label>
-                  <Input
-                    id="addressNumber"
-                    placeholder="123"
-                    value={cardHolderInfo.addressNumber}
-                    onChange={(e) =>
-                      setCardHolderInfo({ ...cardHolderInfo, addressNumber: e.target.value })
-                    }
-                    className="mt-1"
-                  />
+              </div>
+
+              <div className="p-4 rounded-lg bg-secondary/30 border border-border">
+                <span className="font-semibold text-foreground mb-4 block">
+                  Dados do Titular
+                </span>
+
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="cpf">CPF/CNPJ</Label>
+                    <Input
+                      id="cpf"
+                      placeholder="000.000.000-00"
+                      value={cardHolderInfo.cpf}
+                      onChange={(e) =>
+                        setCardHolderInfo({ ...cardHolderInfo, cpf: formatCPF(e.target.value) })
+                      }
+                      maxLength={18}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="postalCode">CEP</Label>
+                      <div className="relative">
+                        <Input
+                          id="postalCode"
+                          placeholder="00000-000"
+                          value={cardHolderInfo.postalCode}
+                          onChange={(e) =>
+                            setCardHolderInfo({
+                              ...cardHolderInfo,
+                              postalCode: formatCEP(e.target.value),
+                            })
+                          }
+                          onBlur={(e) => handleCepBlur(e.target.value)}
+                          maxLength={9}
+                          className="mt-1 pr-10"
+                        />
+                        {loadingCep ? (
+                          <Loader2 className="absolute right-3 top-1/2 translate-y-[-25%] w-4 h-4 animate-spin text-muted-foreground" />
+                        ) : (
+                          <Search className="absolute right-3 top-1/2 translate-y-[-25%] w-4 h-4 text-muted-foreground" />
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="addressNumber">Número</Label>
+                      <Input
+                        id="addressNumber"
+                        placeholder="123"
+                        value={cardHolderInfo.addressNumber}
+                        onChange={(e) =>
+                          setCardHolderInfo({ ...cardHolderInfo, addressNumber: e.target.value })
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
+            </>
+          )}
+
+          {/* Boleto Info */}
+          {selectedPaymentMethod === "BOLETO" && (
+            <div className="p-6 rounded-lg bg-secondary/30 border border-border text-center">
+              <FileText className="w-12 h-12 text-primary mx-auto mb-4" />
+              <h3 className="font-semibold text-foreground mb-2">Pagamento via Boleto</h3>
+              <p className="text-muted-foreground text-sm">
+                Após confirmar, você receberá um boleto bancário por e-mail com vencimento em 3 dias úteis.
+                A assinatura será ativada após a confirmação do pagamento.
+              </p>
             </div>
-          </div>
+          )}
+
+          {/* PIX Info */}
+          {selectedPaymentMethod === "PIX" && (
+            <div className="p-6 rounded-lg bg-secondary/30 border border-border text-center">
+              <QrCode className="w-12 h-12 text-primary mx-auto mb-4" />
+              <h3 className="font-semibold text-foreground mb-2">Pagamento via PIX</h3>
+              <p className="text-muted-foreground text-sm">
+                Após confirmar, você receberá um QR Code e código PIX para pagamento instantâneo.
+                A assinatura será ativada imediatamente após a confirmação.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-4 mt-8">
