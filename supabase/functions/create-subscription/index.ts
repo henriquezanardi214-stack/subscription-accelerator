@@ -6,7 +6,10 @@ const corsHeaders = {
 };
 
 const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY');
-const ASAAS_BASE_URL = 'https://api.asaas.com/v3';
+// Use sandbox URL for testing, change to 'https://api.asaas.com/v3' for production
+const ASAAS_BASE_URL = Deno.env.get('ASAAS_ENVIRONMENT') === 'production' 
+  ? 'https://api.asaas.com/v3' 
+  : 'https://sandbox.asaas.com/api/v3';
 
 type BillingType = 'CREDIT_CARD' | 'BOLETO' | 'PIX';
 
