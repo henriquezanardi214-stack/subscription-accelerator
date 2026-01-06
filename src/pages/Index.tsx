@@ -139,7 +139,7 @@ const Index = () => {
           name: leadData.nome,
           email: leadData.email,
           phone: leadData.telefone,
-          cpfCnpj: paymentData.cardHolderInfo?.cpf || "",
+          cpfCnpj: paymentData.cpfCnpj || paymentData.cardHolderInfo?.cpf || "",
         },
         billingType: paymentData.paymentMethod,
         planId: selectedPlan,

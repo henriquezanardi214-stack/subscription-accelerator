@@ -26,6 +26,7 @@ export interface PaymentData {
   paymentMethod: PaymentMethod;
   creditCard?: CreditCardData;
   cardHolderInfo?: CardHolderInfo;
+  cpfCnpj?: string;
 }
 
 interface StepPaymentProps {
@@ -126,6 +127,7 @@ export const StepPayment = ({
     postalCode: "",
     addressNumber: "",
   });
+  const [cpfCnpj, setCpfCnpj] = useState("");
 
   const handleCepBlur = async (cep: string) => {
     const cleanCep = cep.replace(/\D/g, "");
@@ -185,11 +187,13 @@ export const StepPayment = ({
         cardHolderInfo.postalCode &&
         cardHolderInfo.addressNumber
       ) {
-        onNext({ paymentMethod: selectedPaymentMethod, creditCard, cardHolderInfo });
+        onNext({ paymentMethod: selectedPaymentMethod, creditCard, cardHolderInfo, cpfCnpj: cardHolderInfo.cpf });
       }
     } else {
-      // Boleto or PIX - just need the payment method
-      onNext({ paymentMethod: selectedPaymentMethod });
+      // Boleto or PIX - need the CPF/CNPJ
+      if (cpfCnpj.replace(/\D/g, "").length >= 11) {
+        onNext({ paymentMethod: selectedPaymentMethod, cpfCnpj });
+      }
     }
   };
 
@@ -203,7 +207,9 @@ export const StepPayment = ({
     cardHolderInfo.postalCode.replace(/\D/g, "").length === 8 &&
     cardHolderInfo.addressNumber.length > 0;
 
-  const isPaymentFormValid = selectedPaymentMethod === "CREDIT_CARD" ? isCreditCardFormValid : true;
+  const isBoletoPixFormValid = cpfCnpj.replace(/\D/g, "").length >= 11;
+
+  const isPaymentFormValid = selectedPaymentMethod === "CREDIT_CARD" ? isCreditCardFormValid : isBoletoPixFormValid;
 
   if (showPaymentForm) {
     const selectedPlanData = plans.find((p) => p.id === selectedPlan);
@@ -408,25 +414,49 @@ export const StepPayment = ({
 
           {/* Boleto Info */}
           {selectedPaymentMethod === "BOLETO" && (
-            <div className="p-6 rounded-lg bg-secondary/30 border border-border text-center">
-              <FileText className="w-12 h-12 text-primary mx-auto mb-4" />
-              <h3 className="font-semibold text-foreground mb-2">Pagamento via Boleto</h3>
-              <p className="text-muted-foreground text-sm">
-                Após confirmar, você receberá um boleto bancário por e-mail com vencimento em 3 dias úteis.
-                A assinatura será ativada após a confirmação do pagamento.
-              </p>
+            <div className="p-6 rounded-lg bg-secondary/30 border border-border">
+              <div className="text-center mb-6">
+                <FileText className="w-12 h-12 text-primary mx-auto mb-4" />
+                <h3 className="font-semibold text-foreground mb-2">Pagamento via Boleto</h3>
+                <p className="text-muted-foreground text-sm">
+                  Após confirmar, você receberá um boleto bancário por e-mail com vencimento em 3 dias úteis.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="cpfBoleto">CPF/CNPJ</Label>
+                <Input
+                  id="cpfBoleto"
+                  placeholder="000.000.000-00"
+                  value={cpfCnpj}
+                  onChange={(e) => setCpfCnpj(formatCPF(e.target.value))}
+                  maxLength={18}
+                  className="mt-1"
+                />
+              </div>
             </div>
           )}
 
           {/* PIX Info */}
           {selectedPaymentMethod === "PIX" && (
-            <div className="p-6 rounded-lg bg-secondary/30 border border-border text-center">
-              <QrCode className="w-12 h-12 text-primary mx-auto mb-4" />
-              <h3 className="font-semibold text-foreground mb-2">Pagamento via PIX</h3>
-              <p className="text-muted-foreground text-sm">
-                Após confirmar, você receberá um QR Code e código PIX para pagamento instantâneo.
-                A assinatura será ativada imediatamente após a confirmação.
-              </p>
+            <div className="p-6 rounded-lg bg-secondary/30 border border-border">
+              <div className="text-center mb-6">
+                <QrCode className="w-12 h-12 text-primary mx-auto mb-4" />
+                <h3 className="font-semibold text-foreground mb-2">Pagamento via PIX</h3>
+                <p className="text-muted-foreground text-sm">
+                  Após confirmar, você receberá um QR Code e código PIX para pagamento instantâneo.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="cpfPix">CPF/CNPJ</Label>
+                <Input
+                  id="cpfPix"
+                  placeholder="000.000.000-00"
+                  value={cpfCnpj}
+                  onChange={(e) => setCpfCnpj(formatCPF(e.target.value))}
+                  maxLength={18}
+                  className="mt-1"
+                />
+              </div>
             </div>
           )}
         </div>
