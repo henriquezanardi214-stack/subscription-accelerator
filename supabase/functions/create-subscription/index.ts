@@ -6,10 +6,16 @@ const corsHeaders = {
 };
 
 const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY');
+
+// Normalize environment to avoid issues like "Production" or "production "
+const ASAAS_ENVIRONMENT = (Deno.env.get('ASAAS_ENVIRONMENT') ?? '').trim().toLowerCase();
+
 // Use sandbox URL for testing, change to 'https://api.asaas.com/v3' for production
-const ASAAS_BASE_URL = Deno.env.get('ASAAS_ENVIRONMENT') === 'production' 
-  ? 'https://api.asaas.com/v3' 
+const ASAAS_BASE_URL = ASAAS_ENVIRONMENT === 'production'
+  ? 'https://api.asaas.com/v3'
   : 'https://sandbox.asaas.com/api/v3';
+
+console.log('[create-subscription] ASAAS_ENVIRONMENT =', ASAAS_ENVIRONMENT || '(not set)', '| ASAAS_BASE_URL =', ASAAS_BASE_URL);
 
 type BillingType = 'CREDIT_CARD' | 'BOLETO' | 'PIX';
 
