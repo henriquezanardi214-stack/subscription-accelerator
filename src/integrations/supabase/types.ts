@@ -167,6 +167,56 @@ export type Database = {
           },
         ]
       }
+      subscriptions: {
+        Row: {
+          asaas_customer_id: string
+          asaas_subscription_id: string
+          bank_slip_url: string | null
+          billing_type: string
+          created_at: string
+          id: string
+          lead_id: string
+          pix_qr_code_url: string | null
+          plan_name: string | null
+          plan_value: number
+          status: string
+        }
+        Insert: {
+          asaas_customer_id: string
+          asaas_subscription_id: string
+          bank_slip_url?: string | null
+          billing_type: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          pix_qr_code_url?: string | null
+          plan_name?: string | null
+          plan_value: number
+          status: string
+        }
+        Update: {
+          asaas_customer_id?: string
+          asaas_subscription_id?: string
+          bank_slip_url?: string | null
+          billing_type?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          pix_qr_code_url?: string | null
+          plan_name?: string | null
+          plan_value?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
