@@ -179,6 +179,26 @@ const Index = () => {
         throw new Error(data.error || "Erro ao processar pagamento");
       }
 
+      // Save subscription data to database for tracking
+      if (leadId) {
+        const { error: subError } = await supabase.from("subscriptions").insert({
+          lead_id: leadId,
+          asaas_customer_id: data.customerId,
+          asaas_subscription_id: data.subscriptionId,
+          billing_type: paymentData.paymentMethod,
+          status: data.status || "ACTIVE",
+          plan_value: selectedPlanData.price,
+          plan_name: selectedPlanData.name,
+          bank_slip_url: data.bankSlipUrl || null,
+          pix_qr_code_url: data.pixQrCodeUrl || null,
+        });
+
+        if (subError) {
+          console.error("Error saving subscription:", subError);
+          // Continue even if saving fails - payment was successful
+        }
+      }
+
       const successMessage = paymentData.paymentMethod === "CREDIT_CARD" 
         ? "Sua assinatura foi criada com sucesso."
         : paymentData.paymentMethod === "BOLETO"
