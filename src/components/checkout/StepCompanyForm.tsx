@@ -2,9 +2,25 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ArrowLeft, Plus, Trash2, User, FileText, MapPin, Building, Loader2, Search } from "lucide-react";
 import { useCepLookup } from "@/hooks/useCepLookup";
 import { validateCpf, formatCpf } from "@/lib/cpf";
+import { FileUpload } from "./FileUpload";
+
+interface SocioDocument {
+  rg_url?: string;
+  rg_name?: string;
+  cnh_url?: string;
+  cnh_name?: string;
+}
 
 interface Socio {
   id: string;
@@ -14,17 +30,47 @@ interface Socio {
   cep: string;
   endereco: string;
   cidadeUf: string;
+  estadoCivil: string;
+  naturalidadeCidade: string;
+  naturalidadeEstado: string;
+  documents: SocioDocument;
+}
+
+interface CompanyDocuments {
+  iptu_url?: string;
+  iptu_name?: string;
+  avcb_url?: string;
+  avcb_name?: string;
+  ecpf_url?: string;
+  ecpf_name?: string;
 }
 
 interface StepCompanyFormProps {
   socios: Socio[];
   iptu: string;
+  hasEcpf: boolean;
+  companyDocuments: CompanyDocuments;
   onUpdateSocios: (socios: Socio[]) => void;
   onUpdateIptu: (iptu: string) => void;
+  onUpdateHasEcpf: (hasEcpf: boolean) => void;
+  onUpdateCompanyDocuments: (docs: CompanyDocuments) => void;
   onBack: () => void;
-  onSubmit: () => void;
+  onSubmit: (needsBiometria: boolean) => void;
   isLoading?: boolean;
 }
+
+const ESTADOS_CIVIS = [
+  { value: "solteiro", label: "Solteiro(a)" },
+  { value: "casado", label: "Casado(a)" },
+  { value: "divorciado", label: "Divorciado(a)" },
+  { value: "viuvo", label: "Viúvo(a)" },
+];
+
+const ESTADOS_BRASIL = [
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", 
+  "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", 
+  "SP", "SE", "TO"
+];
 
 const createEmptySocio = (): Socio => ({
   id: crypto.randomUUID(),
@@ -34,13 +80,21 @@ const createEmptySocio = (): Socio => ({
   cep: "",
   endereco: "",
   cidadeUf: "",
+  estadoCivil: "",
+  naturalidadeCidade: "",
+  naturalidadeEstado: "",
+  documents: {},
 });
 
 export const StepCompanyForm = ({
   socios,
   iptu,
+  hasEcpf,
+  companyDocuments,
   onUpdateSocios,
   onUpdateIptu,
+  onUpdateHasEcpf,
+  onUpdateCompanyDocuments,
   onBack,
   onSubmit,
   isLoading,
@@ -98,6 +152,27 @@ export const StepCompanyForm = ({
     onUpdateSocios(updated);
   };
 
+  const handleSocioDocumentChange = (
+    socioId: string,
+    docType: keyof SocioDocument,
+    url: string | null,
+    fileName: string | null
+  ) => {
+    const updated = socios.map((s) =>
+      s.id === socioId
+        ? {
+            ...s,
+            documents: {
+              ...s.documents,
+              [docType]: url,
+              [`${docType.replace("_url", "_name")}`]: fileName,
+            },
+          }
+        : s
+    );
+    onUpdateSocios(updated);
+  };
+
   const addSocio = () => {
     onUpdateSocios([...socios, createEmptySocio()]);
   };
@@ -130,10 +205,30 @@ export const StepCompanyForm = ({
       if (!socio.cidadeUf.trim()) {
         newErrors[`${socio.id}-cidadeUf`] = "Cidade/UF é obrigatório";
       }
+      if (!socio.estadoCivil) {
+        newErrors[`${socio.id}-estadoCivil`] = "Estado civil é obrigatório";
+      }
+      if (!socio.naturalidadeCidade.trim()) {
+        newErrors[`${socio.id}-naturalidadeCidade`] = "Cidade é obrigatória";
+      }
+      if (!socio.naturalidadeEstado) {
+        newErrors[`${socio.id}-naturalidadeEstado`] = "Estado é obrigatório";
+      }
+      if (!socio.documents.rg_url) {
+        newErrors[`${socio.id}-doc-rg`] = "RG é obrigatório";
+      }
     });
 
     if (!iptu.trim()) {
       newErrors["iptu"] = "IPTU é obrigatório";
+    }
+
+    if (!companyDocuments.iptu_url) {
+      newErrors["doc-iptu"] = "Capa do IPTU é obrigatória";
+    }
+
+    if (hasEcpf && !companyDocuments.ecpf_url) {
+      newErrors["doc-ecpf"] = "Certificado e-CPF é obrigatório";
     }
 
     setErrors(newErrors);
@@ -143,7 +238,7 @@ export const StepCompanyForm = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validate()) {
-      onSubmit();
+      onSubmit(!hasEcpf);
     }
   };
 
@@ -189,16 +284,12 @@ export const StepCompanyForm = ({
                 <Input
                   placeholder="Nome completo"
                   value={socio.nome}
-                  onChange={(e) =>
-                    handleSocioChange(socio.id, "nome", e.target.value)
-                  }
+                  onChange={(e) => handleSocioChange(socio.id, "nome", e.target.value)}
                   className="h-11 bg-card"
                   disabled={isLoading}
                 />
                 {errors[`${socio.id}-nome`] && (
-                  <p className="text-sm text-destructive">
-                    {errors[`${socio.id}-nome`]}
-                  </p>
+                  <p className="text-sm text-destructive">{errors[`${socio.id}-nome`]}</p>
                 )}
               </div>
 
@@ -210,16 +301,12 @@ export const StepCompanyForm = ({
                 <Input
                   placeholder="000000000"
                   value={socio.rg}
-                  onChange={(e) =>
-                    handleSocioChange(socio.id, "rg", e.target.value)
-                  }
+                  onChange={(e) => handleSocioChange(socio.id, "rg", e.target.value)}
                   className="h-11 bg-card"
                   disabled={isLoading}
                 />
                 {errors[`${socio.id}-rg`] && (
-                  <p className="text-sm text-destructive">
-                    {errors[`${socio.id}-rg`]}
-                  </p>
+                  <p className="text-sm text-destructive">{errors[`${socio.id}-rg`]}</p>
                 )}
               </div>
 
@@ -228,16 +315,35 @@ export const StepCompanyForm = ({
                 <Input
                   placeholder="000.000.000-00"
                   value={socio.cpf}
-                  onChange={(e) =>
-                    handleSocioChange(socio.id, "cpf", e.target.value)
-                  }
+                  onChange={(e) => handleSocioChange(socio.id, "cpf", e.target.value)}
                   className="h-11 bg-card"
                   disabled={isLoading}
                 />
                 {errors[`${socio.id}-cpf`] && (
-                  <p className="text-sm text-destructive">
-                    {errors[`${socio.id}-cpf`]}
-                  </p>
+                  <p className="text-sm text-destructive">{errors[`${socio.id}-cpf`]}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-foreground">Estado Civil</Label>
+                <Select
+                  value={socio.estadoCivil}
+                  onValueChange={(value) => handleSocioChange(socio.id, "estadoCivil", value)}
+                  disabled={isLoading}
+                >
+                  <SelectTrigger className="h-11 bg-card">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border">
+                    {ESTADOS_CIVIS.map((ec) => (
+                      <SelectItem key={ec.value} value={ec.value}>
+                        {ec.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors[`${socio.id}-estadoCivil`] && (
+                  <p className="text-sm text-destructive">{errors[`${socio.id}-estadoCivil`]}</p>
                 )}
               </div>
 
@@ -250,9 +356,7 @@ export const StepCompanyForm = ({
                   <Input
                     placeholder="00000-000"
                     value={socio.cep}
-                    onChange={(e) =>
-                      handleSocioChange(socio.id, "cep", e.target.value)
-                    }
+                    onChange={(e) => handleSocioChange(socio.id, "cep", e.target.value)}
                     onBlur={(e) => handleCepBlur(socio.id, e.target.value)}
                     className="h-11 bg-card pr-10"
                     disabled={isLoading}
@@ -264,9 +368,7 @@ export const StepCompanyForm = ({
                   )}
                 </div>
                 {errors[`${socio.id}-cep`] && (
-                  <p className="text-sm text-destructive">
-                    {errors[`${socio.id}-cep`]}
-                  </p>
+                  <p className="text-sm text-destructive">{errors[`${socio.id}-cep`]}</p>
                 )}
               </div>
 
@@ -275,37 +377,94 @@ export const StepCompanyForm = ({
                 <Input
                   placeholder="São Paulo/SP"
                   value={socio.cidadeUf}
-                  onChange={(e) =>
-                    handleSocioChange(socio.id, "cidadeUf", e.target.value)
-                  }
+                  onChange={(e) => handleSocioChange(socio.id, "cidadeUf", e.target.value)}
                   className="h-11 bg-card"
                   disabled={isLoading}
                 />
                 {errors[`${socio.id}-cidadeUf`] && (
-                  <p className="text-sm text-destructive">
-                    {errors[`${socio.id}-cidadeUf`]}
-                  </p>
+                  <p className="text-sm text-destructive">{errors[`${socio.id}-cidadeUf`]}</p>
                 )}
               </div>
 
               <div className="sm:col-span-2 space-y-2">
-                <Label className="text-foreground">
-                  Endereço, n° e Complemento
-                </Label>
+                <Label className="text-foreground">Endereço, n° e Complemento</Label>
                 <Input
                   placeholder="Rua, número, apartamento..."
                   value={socio.endereco}
-                  onChange={(e) =>
-                    handleSocioChange(socio.id, "endereco", e.target.value)
-                  }
+                  onChange={(e) => handleSocioChange(socio.id, "endereco", e.target.value)}
                   className="h-11 bg-card"
                   disabled={isLoading}
                 />
                 {errors[`${socio.id}-endereco`] && (
-                  <p className="text-sm text-destructive">
-                    {errors[`${socio.id}-endereco`]}
-                  </p>
+                  <p className="text-sm text-destructive">{errors[`${socio.id}-endereco`]}</p>
                 )}
+              </div>
+
+              {/* Naturalidade */}
+              <div className="sm:col-span-2">
+                <Label className="text-foreground mb-2 block">Local de Nascimento</Label>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Input
+                      placeholder="Cidade"
+                      value={socio.naturalidadeCidade}
+                      onChange={(e) => handleSocioChange(socio.id, "naturalidadeCidade", e.target.value)}
+                      className="h-11 bg-card"
+                      disabled={isLoading}
+                    />
+                    {errors[`${socio.id}-naturalidadeCidade`] && (
+                      <p className="text-sm text-destructive">{errors[`${socio.id}-naturalidadeCidade`]}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Select
+                      value={socio.naturalidadeEstado}
+                      onValueChange={(value) => handleSocioChange(socio.id, "naturalidadeEstado", value)}
+                      disabled={isLoading}
+                    >
+                      <SelectTrigger className="h-11 bg-card">
+                        <SelectValue placeholder="Estado" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border">
+                        {ESTADOS_BRASIL.map((uf) => (
+                          <SelectItem key={uf} value={uf}>
+                            {uf}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors[`${socio.id}-naturalidadeEstado`] && (
+                      <p className="text-sm text-destructive">{errors[`${socio.id}-naturalidadeEstado`]}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Documentos do sócio */}
+              <div className="sm:col-span-2 pt-4 border-t border-border">
+                <h4 className="font-medium text-foreground mb-4">Documentos do Sócio</h4>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <FileUpload
+                      label="RG"
+                      documentType={`rg-${socio.id}`}
+                      required
+                      value={socio.documents.rg_url}
+                      onChange={(url, name) => handleSocioDocumentChange(socio.id, "rg_url", url, name)}
+                      disabled={isLoading}
+                    />
+                    {errors[`${socio.id}-doc-rg`] && (
+                      <p className="text-sm text-destructive mt-1">{errors[`${socio.id}-doc-rg`]}</p>
+                    )}
+                  </div>
+                  <FileUpload
+                    label="CNH (opcional)"
+                    documentType={`cnh-${socio.id}`}
+                    value={socio.documents.cnh_url}
+                    onChange={(url, name) => handleSocioDocumentChange(socio.id, "cnh_url", url, name)}
+                    disabled={isLoading}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -322,11 +481,13 @@ export const StepCompanyForm = ({
           Adicionar outro sócio
         </Button>
 
-        <div className="p-6 rounded-xl border border-border bg-card/50 space-y-4">
+        {/* Dados da Empresa */}
+        <div className="p-6 rounded-xl border border-border bg-card/50 space-y-6">
           <h3 className="font-semibold text-foreground flex items-center gap-2">
             <Building className="w-4 h-4 text-primary" />
             Dados da Empresa
           </h3>
+
           <div className="space-y-2">
             <Label className="text-foreground">IPTU (Empresa)</Label>
             <Input
@@ -338,6 +499,75 @@ export const StepCompanyForm = ({
             />
             {errors["iptu"] && (
               <p className="text-sm text-destructive">{errors["iptu"]}</p>
+            )}
+          </div>
+
+          {/* Documentos da empresa */}
+          <div className="pt-4 border-t border-border space-y-4">
+            <h4 className="font-medium text-foreground">Documentos da Empresa</h4>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <FileUpload
+                  label="Capa do IPTU"
+                  documentType="iptu-capa"
+                  required
+                  value={companyDocuments.iptu_url}
+                  onChange={(url, name) =>
+                    onUpdateCompanyDocuments({ ...companyDocuments, iptu_url: url || undefined, iptu_name: name || undefined })
+                  }
+                  disabled={isLoading}
+                />
+                {errors["doc-iptu"] && (
+                  <p className="text-sm text-destructive mt-1">{errors["doc-iptu"]}</p>
+                )}
+              </div>
+              <FileUpload
+                label="AVCB (opcional)"
+                documentType="avcb"
+                value={companyDocuments.avcb_url}
+                onChange={(url, name) =>
+                  onUpdateCompanyDocuments({ ...companyDocuments, avcb_url: url || undefined, avcb_name: name || undefined })
+                }
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+
+          {/* e-CPF */}
+          <div className="pt-4 border-t border-border space-y-4">
+            <Label className="text-foreground">Possui e-CPF?</Label>
+            <RadioGroup
+              value={hasEcpf ? "sim" : "nao"}
+              onValueChange={(value) => onUpdateHasEcpf(value === "sim")}
+              className="flex gap-6"
+              disabled={isLoading}
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="sim" id="ecpf-sim" />
+                <Label htmlFor="ecpf-sim" className="cursor-pointer">Sim</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="nao" id="ecpf-nao" />
+                <Label htmlFor="ecpf-nao" className="cursor-pointer">Não</Label>
+              </div>
+            </RadioGroup>
+
+            {hasEcpf && (
+              <div className="mt-4">
+                <FileUpload
+                  label="Certificado e-CPF"
+                  documentType="ecpf-certificado"
+                  required
+                  value={companyDocuments.ecpf_url}
+                  onChange={(url, name) =>
+                    onUpdateCompanyDocuments({ ...companyDocuments, ecpf_url: url || undefined, ecpf_name: name || undefined })
+                  }
+                  disabled={isLoading}
+                />
+                {errors["doc-ecpf"] && (
+                  <p className="text-sm text-destructive mt-1">{errors["doc-ecpf"]}</p>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -372,3 +602,6 @@ export const StepCompanyForm = ({
     </div>
   );
 };
+
+export { createEmptySocio };
+export type { Socio, SocioDocument, CompanyDocuments };

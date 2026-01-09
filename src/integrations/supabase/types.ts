@@ -17,21 +17,30 @@ export type Database = {
       company_formations: {
         Row: {
           created_at: string
+          ecpf_certificate_url: string | null
+          has_ecpf: boolean | null
           id: string
           iptu: string
           lead_id: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
+          ecpf_certificate_url?: string | null
+          has_ecpf?: boolean | null
           id?: string
           iptu: string
           lead_id: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
+          ecpf_certificate_url?: string | null
+          has_ecpf?: boolean | null
           id?: string
           iptu?: string
           lead_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -39,6 +48,51 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          company_formation_id: string
+          created_at: string
+          document_type: string
+          file_name: string
+          file_url: string
+          id: string
+          partner_id: string | null
+        }
+        Insert: {
+          company_formation_id: string
+          created_at?: string
+          document_type: string
+          file_name: string
+          file_url: string
+          id?: string
+          partner_id?: string | null
+        }
+        Update: {
+          company_formation_id?: string
+          created_at?: string
+          document_type?: string
+          file_name?: string
+          file_url?: string
+          id?: string
+          partner_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_company_formation_id_fkey"
+            columns: ["company_formation_id"]
+            isOneToOne: false
+            referencedRelation: "company_formations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_partner_id_fkey"
+            columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "partners"
             referencedColumns: ["id"]
           },
         ]
@@ -70,34 +124,43 @@ export type Database = {
       partners: {
         Row: {
           address: string
+          birthplace_city: string | null
+          birthplace_state: string | null
           cep: string
           city_state: string
           company_formation_id: string
           cpf: string
           created_at: string
           id: string
+          marital_status: string | null
           name: string
           rg: string
         }
         Insert: {
           address: string
+          birthplace_city?: string | null
+          birthplace_state?: string | null
           cep: string
           city_state: string
           company_formation_id: string
           cpf: string
           created_at?: string
           id?: string
+          marital_status?: string | null
           name: string
           rg: string
         }
         Update: {
           address?: string
+          birthplace_city?: string | null
+          birthplace_state?: string | null
           cep?: string
           city_state?: string
           company_formation_id?: string
           cpf?: string
           created_at?: string
           id?: string
+          marital_status?: string | null
           name?: string
           rg?: string
         }
