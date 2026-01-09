@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Disqualified from "./pages/Disqualified";
 import Success from "./pages/Success";
+import Biometria from "./pages/Biometria";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import AdminLayout from "./components/admin/AdminLayout";
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/desqualificado" element={<Disqualified />} />
           <Route path="/sucesso" element={<Success />} />
+          <Route path="/biometria" element={<Biometria />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Dashboard />} />

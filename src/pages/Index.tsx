@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Stepper } from "@/components/checkout/Stepper";
 import { StepLead } from "@/components/checkout/StepLead";
 import { StepQualification } from "@/components/checkout/StepQualification";
 import { StepPayment, plans, PaymentData } from "@/components/checkout/StepPayment";
-import { StepCompanyForm } from "@/components/checkout/StepCompanyForm";
+import { StepRegister } from "@/components/checkout/StepRegister";
+import { StepCompanyForm, Socio, CompanyDocuments, createEmptySocio } from "@/components/checkout/StepCompanyForm";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -12,18 +13,9 @@ const steps = [
   { title: "Seus dados", description: "Informações de contato" },
   { title: "Qualificação", description: "Sobre sua empresa" },
   { title: "Plano", description: "Escolha seu plano" },
+  { title: "Cadastro", description: "Crie sua conta" },
   { title: "Abertura", description: "Dados da empresa" },
 ];
-
-interface Socio {
-  id: string;
-  nome: string;
-  rg: string;
-  cpf: string;
-  cep: string;
-  endereco: string;
-  cidadeUf: string;
-}
 
 const Index = () => {
   const navigate = useNavigate();
@@ -49,19 +41,22 @@ const Index = () => {
   // Step 3 - Payment
   const [selectedPlan, setSelectedPlan] = useState("");
 
-  // Step 4 - Company Form
-  const [socios, setSocios] = useState<Socio[]>([
-    {
-      id: crypto.randomUUID(),
-      nome: "",
-      rg: "",
-      cpf: "",
-      cep: "",
-      endereco: "",
-      cidadeUf: "",
-    },
-  ]);
+  // Step 5 - Company Form
+  const [socios, setSocios] = useState<Socio[]>([createEmptySocio()]);
   const [iptu, setIptu] = useState("");
+  const [hasEcpf, setHasEcpf] = useState(false);
+  const [companyDocuments, setCompanyDocuments] = useState<CompanyDocuments>({});
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session && currentStep === 4) {
+        setCurrentStep(5);
+      }
+    };
+    checkSession();
+  }, [currentStep]);
 
   const handleLeadSubmit = async () => {
     setIsLoading(true);
@@ -147,7 +142,6 @@ const Index = () => {
         remoteIp: "0.0.0.0",
       };
 
-      // Add credit card data only for credit card payments
       if (paymentData.paymentMethod === "CREDIT_CARD" && paymentData.creditCard && paymentData.cardHolderInfo) {
         requestBody.creditCard = {
           holderName: paymentData.creditCard.holderName,
@@ -179,7 +173,6 @@ const Index = () => {
         throw new Error(data.error || "Erro ao processar pagamento");
       }
 
-      // Save subscription data to database for tracking
       if (leadId) {
         const { error: subError } = await supabase.from("subscriptions").insert({
           lead_id: leadId,
@@ -195,7 +188,6 @@ const Index = () => {
 
         if (subError) {
           console.error("Error saving subscription:", subError);
-          // Continue even if saving fails - payment was successful
         }
       }
 
@@ -223,17 +215,26 @@ const Index = () => {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleRegisterNext = () => {
+    setCurrentStep(5);
+  };
+
+  const handleSubmit = async (needsBiometria: boolean) => {
     if (!leadId) return;
 
     setIsLoading(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+
       // Create company formation record
       const { data: formationData, error: formationError } = await supabase
         .from("company_formations")
         .insert({
           lead_id: leadId,
           iptu: iptu,
+          has_ecpf: hasEcpf,
+          ecpf_certificate_url: companyDocuments.ecpf_url || null,
+          user_id: user?.id || null,
         })
         .select()
         .single();
@@ -249,15 +250,80 @@ const Index = () => {
         cep: socio.cep.replace(/\D/g, ""),
         address: socio.endereco,
         city_state: socio.cidadeUf,
+        marital_status: socio.estadoCivil,
+        birthplace_city: socio.naturalidadeCidade,
+        birthplace_state: socio.naturalidadeEstado,
       }));
 
-      const { error: partnersError } = await supabase
+      const { data: partnersData, error: partnersError } = await supabase
         .from("partners")
-        .insert(partnersToInsert);
+        .insert(partnersToInsert)
+        .select();
 
       if (partnersError) throw partnersError;
 
-      navigate("/sucesso");
+      // Save company documents
+      const documentsToInsert = [];
+
+      if (companyDocuments.iptu_url) {
+        documentsToInsert.push({
+          company_formation_id: formationData.id,
+          document_type: "iptu_capa",
+          file_name: companyDocuments.iptu_name || "iptu",
+          file_url: companyDocuments.iptu_url,
+        });
+      }
+
+      if (companyDocuments.avcb_url) {
+        documentsToInsert.push({
+          company_formation_id: formationData.id,
+          document_type: "avcb",
+          file_name: companyDocuments.avcb_name || "avcb",
+          file_url: companyDocuments.avcb_url,
+        });
+      }
+
+      // Save partner documents
+      for (let i = 0; i < socios.length; i++) {
+        const socio = socios[i];
+        const partnerId = partnersData?.[i]?.id;
+
+        if (partnerId && socio.documents.rg_url) {
+          documentsToInsert.push({
+            company_formation_id: formationData.id,
+            partner_id: partnerId,
+            document_type: "rg",
+            file_name: socio.documents.rg_name || "rg",
+            file_url: socio.documents.rg_url,
+          });
+        }
+
+        if (partnerId && socio.documents.cnh_url) {
+          documentsToInsert.push({
+            company_formation_id: formationData.id,
+            partner_id: partnerId,
+            document_type: "cnh",
+            file_name: socio.documents.cnh_name || "cnh",
+            file_url: socio.documents.cnh_url,
+          });
+        }
+      }
+
+      if (documentsToInsert.length > 0) {
+        const { error: docsError } = await supabase
+          .from("documents")
+          .insert(documentsToInsert);
+
+        if (docsError) {
+          console.error("Error saving documents:", docsError);
+        }
+      }
+
+      if (needsBiometria) {
+        navigate("/biometria");
+      } else {
+        navigate("/sucesso");
+      }
     } catch (error) {
       console.error("Error saving company data:", error);
       toast({
@@ -319,11 +385,24 @@ const Index = () => {
             )}
 
             {currentStep === 4 && (
+              <StepRegister
+                email={leadData.email}
+                onBack={handleBack}
+                onNext={handleRegisterNext}
+                isLoading={isLoading}
+              />
+            )}
+
+            {currentStep === 5 && (
               <StepCompanyForm
                 socios={socios}
                 iptu={iptu}
+                hasEcpf={hasEcpf}
+                companyDocuments={companyDocuments}
                 onUpdateSocios={setSocios}
                 onUpdateIptu={setIptu}
+                onUpdateHasEcpf={setHasEcpf}
+                onUpdateCompanyDocuments={setCompanyDocuments}
                 onBack={handleBack}
                 onSubmit={handleSubmit}
                 isLoading={isLoading}
