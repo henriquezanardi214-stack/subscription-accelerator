@@ -9,11 +9,13 @@ import Success from "./pages/Success";
 import Biometria from "./pages/Biometria";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
+import Login from "./pages/Login";
 import AdminLayout from "./components/admin/AdminLayout";
 import Dashboard from "./pages/admin/Dashboard";
 import Leads from "./pages/admin/Leads";
 import Qualifications from "./pages/admin/Qualifications";
 import Payments from "./pages/admin/Payments";
+import Documents from "./pages/admin/Documents";
 
 const queryClient = new QueryClient();
 
@@ -29,11 +31,13 @@ const App = () => (
           <Route path="/sucesso" element={<Success />} />
           <Route path="/biometria" element={<Biometria />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Dashboard />} />
             <Route path="leads" element={<Leads />} />
             <Route path="qualifications" element={<Qualifications />} />
             <Route path="payments" element={<Payments />} />
+            <Route path="documents" element={<Documents />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

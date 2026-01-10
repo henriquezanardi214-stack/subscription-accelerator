@@ -8,6 +8,8 @@ import { StepRegister } from "@/components/checkout/StepRegister";
 import { StepCompanyForm, Socio, CompanyDocuments, createEmptySocio } from "@/components/checkout/StepCompanyForm";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useResumeRegistration } from "@/hooks/useResumeRegistration";
+import { Loader2 } from "lucide-react";
 
 const steps = [
   { title: "Seus dados", description: "Informações de contato" },
@@ -20,6 +22,7 @@ const steps = [
 const Index = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isLoading: isLoadingResume, resumeData } = useResumeRegistration();
   const [currentStep, setCurrentStep] = useState(1);
   const [leadId, setLeadId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -46,6 +49,20 @@ const Index = () => {
   const [iptu, setIptu] = useState("");
   const [hasEcpf, setHasEcpf] = useState(false);
   const [companyDocuments, setCompanyDocuments] = useState<CompanyDocuments>({});
+
+  // Load resume data when available
+  useEffect(() => {
+    if (resumeData) {
+      setLeadId(resumeData.leadId);
+      setLeadData(resumeData.leadData);
+      setQualificationData(resumeData.qualificationData);
+      setSocios(resumeData.socios);
+      setIptu(resumeData.iptu);
+      setHasEcpf(resumeData.hasEcpf);
+      setCompanyDocuments(resumeData.companyDocuments);
+      setCurrentStep(resumeData.currentStep);
+    }
+  }, [resumeData]);
 
   // Check if user is already logged in
   useEffect(() => {
@@ -335,6 +352,14 @@ const Index = () => {
       setIsLoading(false);
     }
   };
+
+  if (isLoadingResume) {
+    return (
+      <div className="min-h-screen gradient-hero flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen gradient-hero">

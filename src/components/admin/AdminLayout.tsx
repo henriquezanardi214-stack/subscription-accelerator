@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
-import { Loader2, Users, ClipboardCheck, CreditCard, LogOut, LayoutDashboard } from "lucide-react";
+import { Loader2, Users, ClipboardCheck, CreditCard, LogOut, LayoutDashboard, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -23,6 +23,7 @@ const menuItems = [
   { title: "Leads", url: "/admin/leads", icon: Users },
   { title: "Qualificações", url: "/admin/qualifications", icon: ClipboardCheck },
   { title: "Pagamentos", url: "/admin/payments", icon: CreditCard },
+  { title: "Documentos", url: "/admin/documents", icon: FileText },
 ];
 
 const AdminLayout = () => {
