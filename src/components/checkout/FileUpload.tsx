@@ -62,12 +62,9 @@ export const FileUpload = ({
 
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
-        .from("documents")
-        .getPublicUrl(filePath);
-
+      // Store just the file path - we'll generate signed URLs when needed
       setFileName(file.name);
-      onChange(urlData.publicUrl, file.name);
+      onChange(filePath, file.name);
 
       toast({
         title: "Arquivo enviado",
