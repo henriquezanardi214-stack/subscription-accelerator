@@ -18,50 +18,41 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [existingUserId, setExistingUserId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (session?.user) {
-          checkExistingProgress(session.user.id);
-        } else {
-          setCheckingAuth(false);
-        }
-      }
-    );
-
+    // IMPORTANT: do not auto-redirect away from /login.
+    // If the user is already authenticated, we show a "continue" screen instead.
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        checkExistingProgress(session.user.id);
-      } else {
-        setCheckingAuth(false);
+        setExistingUserId(session.user.id);
       }
+      setCheckingAuth(false);
     });
-
-    return () => subscription.unsubscribe();
   }, []);
 
-  const checkExistingProgress = async (userId: string) => {
+  const handleLogout = async () => {
+    setLoading(true);
     try {
-      const { data: formation } = await supabase
-        .from("company_formations")
-        .select("*, leads(*)")
-        .eq("user_id", userId)
-        .maybeSingle();
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
 
-      if (formation) {
-        toast({
-          title: "Bem-vindo de volta!",
-          description: "Continue de onde parou.",
-        });
-      }
-      // Always navigate to home - the useResumeRegistration hook will handle loading saved data
-      navigate("/");
+      setExistingUserId(null);
+      toast({
+        title: "Você saiu da sua conta",
+        description: "Agora você pode entrar com outro email.",
+      });
     } catch (error) {
-      console.error("Error checking progress:", error);
-      navigate("/");
+      console.error("Error signing out:", error);
+      toast({
+        title: "Erro ao sair",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -69,7 +60,7 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -81,12 +72,21 @@ const Login = () => {
         variant: "destructive",
       });
       setLoading(false);
+      return;
     }
+
+    toast({
+      title: "Login realizado!",
+      description: "Redirecionando...",
+    });
+
+    setExistingUserId(data.user?.id ?? null);
+    navigate("/");
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (password !== confirmPassword) {
       toast({
         title: "Erro",
@@ -98,7 +98,7 @@ const Login = () => {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -112,13 +112,18 @@ const Login = () => {
         description: error.message,
         variant: "destructive",
       });
-    } else {
-      toast({
-        title: "Conta criada!",
-        description: "Você será redirecionado em instantes.",
-      });
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+
+    toast({
+      title: "Conta criada!",
+      description: "Redirecionando...",
+    });
+
+    // With auto-confirm enabled, we usually get a session right away.
+    setExistingUserId(data.user?.id ?? null);
+    navigate("/");
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -159,6 +164,36 @@ const Login = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (existingUserId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-bold">Você já está logado</CardTitle>
+            <CardDescription>
+              Continue seu cadastro ou saia para entrar com outro email.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button className="w-full gradient-primary" onClick={() => navigate("/")}
+              disabled={loading}
+            >
+              Continuar cadastro
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={handleLogout}
+              disabled={loading}
+            >
+              Sair e trocar conta
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
