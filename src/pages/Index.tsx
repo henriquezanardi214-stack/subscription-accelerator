@@ -64,16 +64,8 @@ const Index = () => {
     }
   }, [resumeData]);
 
-  // Check if user is already logged in
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session && currentStep === 4) {
-        setCurrentStep(5);
-      }
-    };
-    checkSession();
-  }, [currentStep]);
+  // Only skip registration step if user just completed it (from StepRegister's onNext)
+  // Do NOT auto-skip based on session alone - the registration step is intentional
 
   const handleLeadSubmit = async () => {
     setIsLoading(true);

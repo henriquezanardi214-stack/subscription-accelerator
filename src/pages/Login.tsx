@@ -56,10 +56,9 @@ const Login = () => {
           title: "Bem-vindo de volta!",
           description: "Continue de onde parou.",
         });
-        navigate("/?resume=true&formation_id=" + formation.id);
-      } else {
-        navigate("/");
       }
+      // Always navigate to home - the useResumeRegistration hook will handle loading saved data
+      navigate("/");
     } catch (error) {
       console.error("Error checking progress:", error);
       navigate("/");
