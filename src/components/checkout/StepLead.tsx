@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -154,6 +155,15 @@ export const StepLead = ({ data, onUpdate, onNext, isLoading }: StepLeadProps) =
             </>
           )}
         </Button>
+
+        <div className="text-center pt-4 border-t border-border">
+          <p className="text-sm text-muted-foreground">
+            Já começou o cadastro?{" "}
+            <Link to="/login" className="text-primary hover:underline font-medium">
+              Faça login para continuar
+            </Link>
+          </p>
+        </div>
       </form>
     </div>
   );
