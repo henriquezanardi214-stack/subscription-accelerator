@@ -64,6 +64,33 @@ const Index = () => {
     }
   }, [resumeData]);
 
+  // Check if logged-in user has already completed registration
+  useEffect(() => {
+    const checkCompletedRegistration = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const { data: formation } = await supabase
+        .from("company_formations")
+        .select(`
+          id,
+          partners (id)
+        `)
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+
+      if (formation) {
+        const partners = formation.partners as { id: string }[] | null;
+        if (partners && partners.length > 0) {
+          // User has completed registration, redirect to portal
+          navigate("/acesso-portal");
+        }
+      }
+    };
+    
+    checkCompletedRegistration();
+  }, [navigate]);
+
   // Only skip registration step if user just completed it (from StepRegister's onNext)
   // Do NOT auto-skip based on session alone - the registration step is intentional
 

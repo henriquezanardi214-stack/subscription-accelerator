@@ -28,10 +28,39 @@ const Login = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setExistingUserId(session.user.id);
+        checkUserProgress(session.user.id);
       }
       setCheckingAuth(false);
     });
   }, []);
+
+  const [hasCompletedRegistration, setHasCompletedRegistration] = useState(false);
+  const [formationId, setFormationId] = useState<string | null>(null);
+
+  const checkUserProgress = async (userId: string) => {
+    try {
+      // Check if user has a company formation with partners (meaning they completed registration)
+      const { data: formation } = await supabase
+        .from("company_formations")
+        .select(`
+          id,
+          partners (id)
+        `)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (formation) {
+        setFormationId(formation.id);
+        // If there are partners, registration is complete
+        const partners = formation.partners as { id: string }[] | null;
+        if (partners && partners.length > 0) {
+          setHasCompletedRegistration(true);
+        }
+      }
+    } catch (error) {
+      console.error("Error checking user progress:", error);
+    }
+  };
 
   const handleLogout = async () => {
     setLoading(true);
@@ -80,7 +109,33 @@ const Login = () => {
       description: "Redirecionando...",
     });
 
-    setExistingUserId(data.user?.id ?? null);
+    // Check if user has completed registration
+    const userId = data.user?.id;
+    if (userId) {
+      const { data: formation } = await supabase
+        .from("company_formations")
+        .select(`
+          id,
+          partners (id)
+        `)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (formation) {
+        const partners = formation.partners as { id: string }[] | null;
+        if (partners && partners.length > 0) {
+          // User completed registration
+          navigate("/acesso-portal");
+          return;
+        } else {
+          // User has formation but no partners - resume at step 5
+          navigate(`/?resume=true&formation_id=${formation.id}`);
+          return;
+        }
+      }
+    }
+
+    // No progress found, start fresh
     navigate("/");
   };
 
@@ -121,8 +176,7 @@ const Login = () => {
       description: "Redirecionando...",
     });
 
-    // With auto-confirm enabled, we usually get a session right away.
-    setExistingUserId(data.user?.id ?? null);
+    // New signup - go to home to continue registration flow
     navigate("/");
   };
 
@@ -169,17 +223,57 @@ const Login = () => {
   }
 
   if (existingUserId) {
+    // User already completed registration - redirect to portal access page
+    if (hasCompletedRegistration) {
+      return (
+        <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl font-bold">Bem-vindo de volta!</CardTitle>
+              <CardDescription>
+                Seu cadastro já foi concluído. Acesse o portal para acompanhar seu processo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button className="w-full gradient-primary" onClick={() => navigate("/acesso-portal")}
+                disabled={loading}
+              >
+                Acessar Portal
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleLogout}
+                disabled={loading}
+              >
+                Sair e trocar conta
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    // User has progress but hasn't completed - let them continue
     return (
       <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold">Você já está logado</CardTitle>
             <CardDescription>
-              Continue seu cadastro ou saia para entrar com outro email.
+              Continue seu cadastro de onde parou.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button className="w-full gradient-primary" onClick={() => navigate("/")}
+            <Button 
+              className="w-full gradient-primary" 
+              onClick={() => {
+                if (formationId) {
+                  navigate(`/?resume=true&formation_id=${formationId}`);
+                } else {
+                  navigate("/");
+                }
+              }}
               disabled={loading}
             >
               Continuar cadastro

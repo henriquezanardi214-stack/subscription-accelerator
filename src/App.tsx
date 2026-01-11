@@ -10,6 +10,7 @@ import Biometria from "./pages/Biometria";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import Login from "./pages/Login";
+import AcessoPortal from "./pages/AcessoPortal";
 import AdminLayout from "./components/admin/AdminLayout";
 import Dashboard from "./pages/admin/Dashboard";
 import Leads from "./pages/admin/Leads";
@@ -32,6 +33,7 @@ const App = () => (
           <Route path="/biometria" element={<Biometria />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/acesso-portal" element={<AcessoPortal />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Dashboard />} />
             <Route path="leads" element={<Leads />} />
