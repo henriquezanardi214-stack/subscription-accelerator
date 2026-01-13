@@ -89,7 +89,7 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -109,33 +109,7 @@ const Login = () => {
       description: "Redirecionando...",
     });
 
-    // Check if user has completed registration
-    const userId = data.user?.id;
-    if (userId) {
-      const { data: formation } = await supabase
-        .from("company_formations")
-        .select(`
-          id,
-          partners (id)
-        `)
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (formation) {
-        const partners = formation.partners as { id: string }[] | null;
-        if (partners && partners.length > 0) {
-          // User completed registration
-          navigate("/acesso-portal");
-          return;
-        } else {
-          // User has formation but no partners - resume at step 5
-          navigate(`/?resume=true&formation_id=${formation.id}`);
-          return;
-        }
-      }
-    }
-
-    // No progress found, start fresh
+    // Just navigate to home - Index.tsx will handle the redirection logic
     navigate("/");
   };
 
@@ -267,13 +241,7 @@ const Login = () => {
           <CardContent className="space-y-3">
             <Button 
               className="w-full gradient-primary" 
-              onClick={() => {
-                if (formationId) {
-                  navigate(`/?resume=true&formation_id=${formationId}`);
-                } else {
-                  navigate("/");
-                }
-              }}
+              onClick={() => navigate("/")}
               disabled={loading}
             >
               Continuar cadastro

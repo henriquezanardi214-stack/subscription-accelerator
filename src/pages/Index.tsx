@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Stepper } from "@/components/checkout/Stepper";
 import { StepLead } from "@/components/checkout/StepLead";
 import { StepQualification } from "@/components/checkout/StepQualification";
@@ -8,7 +8,6 @@ import { StepRegister } from "@/components/checkout/StepRegister";
 import { StepCompanyForm, Socio, CompanyDocuments, createEmptySocio } from "@/components/checkout/StepCompanyForm";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useResumeRegistration } from "@/hooks/useResumeRegistration";
 import { Loader2 } from "lucide-react";
 
 const steps = [
@@ -21,8 +20,9 @@ const steps = [
 
 const Index = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const { isLoading: isLoadingResume, resumeData } = useResumeRegistration();
+  const [isLoadingResume, setIsLoadingResume] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
   const [leadId, setLeadId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -50,45 +50,73 @@ const Index = () => {
   const [hasEcpf, setHasEcpf] = useState(false);
   const [companyDocuments, setCompanyDocuments] = useState<CompanyDocuments>({});
 
-  // Load resume data when available
+  // Check user session and load resume data
   useEffect(() => {
-    if (resumeData) {
-      setLeadId(resumeData.leadId);
-      setLeadData(resumeData.leadData);
-      setQualificationData(resumeData.qualificationData);
-      setSocios(resumeData.socios);
-      setIptu(resumeData.iptu);
-      setHasEcpf(resumeData.hasEcpf);
-      setCompanyDocuments(resumeData.companyDocuments);
-      setCurrentStep(resumeData.currentStep);
-    }
-  }, [resumeData]);
-
-  // Check if logged-in user has already completed registration
-  useEffect(() => {
-    const checkCompletedRegistration = async () => {
+    const checkUserAndLoadData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
+      
+      // If not logged in, show step 1
+      if (!session?.user) {
+        setIsLoadingResume(false);
+        return;
+      }
 
+      // Check if user has a company_formation
       const { data: formation } = await supabase
         .from("company_formations")
         .select(`
           id,
-          partners (id)
+          lead_id,
+          iptu,
+          has_ecpf,
+          ecpf_certificate_url,
+          leads (*),
+          partners (*),
+          documents:documents (*)
         `)
         .eq("user_id", session.user.id)
         .maybeSingle();
 
       if (formation) {
         const partners = formation.partners as { id: string }[] | null;
+        
+        // If partners exist, registration is complete - go to portal
         if (partners && partners.length > 0) {
-          // User has completed registration, redirect to portal
           navigate("/acesso-portal");
+          return;
         }
+
+        // User has formation but no partners - load data and go to step 5
+        const lead = formation.leads as { name: string; email: string; phone: string } | null;
+
+        // Fetch qualification data
+        const { data: qualification } = await supabase
+          .from("qualifications")
+          .select("*")
+          .eq("lead_id", formation.lead_id)
+          .maybeSingle();
+
+        setLeadId(formation.lead_id);
+        setLeadData({
+          nome: lead?.name || "",
+          email: lead?.email || "",
+          telefone: lead?.phone || "",
+        });
+        setQualificationData({
+          segmento: qualification?.company_segment || "",
+          areaAtuacao: qualification?.area_of_operation || "",
+          faturamento: qualification?.monthly_revenue || "",
+        });
+        setIptu(formation.iptu || "");
+        setHasEcpf(formation.has_ecpf || false);
+        setSocios([createEmptySocio()]);
+        setCurrentStep(5);
       }
+
+      setIsLoadingResume(false);
     };
-    
-    checkCompletedRegistration();
+
+    checkUserAndLoadData();
   }, [navigate]);
 
   // Only skip registration step if user just completed it (from StepRegister's onNext)
