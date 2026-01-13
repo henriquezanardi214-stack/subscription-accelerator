@@ -136,8 +136,9 @@ const FormularioAbertura = () => {
       await supabase.from("partners").delete().eq("company_formation_id", formationId);
       await supabase.from("documents").delete().eq("company_formation_id", formationId);
 
-      // Insert all partners
+      // Generate partner IDs client-side to avoid needing SELECT after INSERT
       const partnersToInsert = socios.map((socio) => ({
+        id: crypto.randomUUID(),
         company_formation_id: formationId,
         name: socio.nome,
         rg: socio.rg,
@@ -150,10 +151,9 @@ const FormularioAbertura = () => {
         birthplace_state: socio.naturalidadeEstado,
       }));
 
-      const { data: partnersData, error: partnersError } = await supabase
+      const { error: partnersError } = await supabase
         .from("partners")
-        .insert(partnersToInsert)
-        .select();
+        .insert(partnersToInsert);
 
       if (partnersError) throw partnersError;
 
@@ -178,12 +178,12 @@ const FormularioAbertura = () => {
         });
       }
 
-      // Save partner documents
+      // Save partner documents using the generated partner IDs
       for (let i = 0; i < socios.length; i++) {
         const socio = socios[i];
-        const partnerId = partnersData?.[i]?.id;
+        const partnerId = partnersToInsert[i].id;
 
-        if (partnerId && socio.documents.rg_url) {
+        if (socio.documents.rg_url) {
           documentsToInsert.push({
             company_formation_id: formationId,
             partner_id: partnerId,
@@ -193,7 +193,7 @@ const FormularioAbertura = () => {
           });
         }
 
-        if (partnerId && socio.documents.cnh_url) {
+        if (socio.documents.cnh_url) {
           documentsToInsert.push({
             company_formation_id: formationId,
             partner_id: partnerId,

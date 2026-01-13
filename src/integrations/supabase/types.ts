@@ -316,6 +316,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      lead_exists: { Args: { _lead_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "user"

@@ -297,24 +297,27 @@ const Index = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
+      // Generate IDs client-side to avoid needing SELECT after INSERT
+      const formationId = crypto.randomUUID();
+
       // Create company formation record
-      const { data: formationData, error: formationError } = await supabase
+      const { error: formationError } = await supabase
         .from("company_formations")
         .insert({
+          id: formationId,
           lead_id: leadId,
           iptu: iptu,
           has_ecpf: hasEcpf,
           ecpf_certificate_url: companyDocuments.ecpf_url || null,
           user_id: user?.id || null,
-        })
-        .select()
-        .single();
+        });
 
       if (formationError) throw formationError;
 
-      // Insert all partners
+      // Generate partner IDs client-side
       const partnersToInsert = socios.map((socio) => ({
-        company_formation_id: formationData.id,
+        id: crypto.randomUUID(),
+        company_formation_id: formationId,
         name: socio.nome,
         rg: socio.rg,
         cpf: socio.cpf.replace(/\D/g, ""),
@@ -326,10 +329,9 @@ const Index = () => {
         birthplace_state: socio.naturalidadeEstado,
       }));
 
-      const { data: partnersData, error: partnersError } = await supabase
+      const { error: partnersError } = await supabase
         .from("partners")
-        .insert(partnersToInsert)
-        .select();
+        .insert(partnersToInsert);
 
       if (partnersError) throw partnersError;
 
@@ -338,7 +340,7 @@ const Index = () => {
 
       if (companyDocuments.iptu_url) {
         documentsToInsert.push({
-          company_formation_id: formationData.id,
+          company_formation_id: formationId,
           document_type: "iptu_capa",
           file_name: companyDocuments.iptu_name || "iptu",
           file_url: companyDocuments.iptu_url,
@@ -347,21 +349,21 @@ const Index = () => {
 
       if (companyDocuments.avcb_url) {
         documentsToInsert.push({
-          company_formation_id: formationData.id,
+          company_formation_id: formationId,
           document_type: "avcb",
           file_name: companyDocuments.avcb_name || "avcb",
           file_url: companyDocuments.avcb_url,
         });
       }
 
-      // Save partner documents
+      // Save partner documents using the generated partner IDs
       for (let i = 0; i < socios.length; i++) {
         const socio = socios[i];
-        const partnerId = partnersData?.[i]?.id;
+        const partnerId = partnersToInsert[i].id;
 
-        if (partnerId && socio.documents.rg_url) {
+        if (socio.documents.rg_url) {
           documentsToInsert.push({
-            company_formation_id: formationData.id,
+            company_formation_id: formationId,
             partner_id: partnerId,
             document_type: "rg",
             file_name: socio.documents.rg_name || "rg",
@@ -369,9 +371,9 @@ const Index = () => {
           });
         }
 
-        if (partnerId && socio.documents.cnh_url) {
+        if (socio.documents.cnh_url) {
           documentsToInsert.push({
-            company_formation_id: formationData.id,
+            company_formation_id: formationId,
             partner_id: partnerId,
             document_type: "cnh",
             file_name: socio.documents.cnh_name || "cnh",
