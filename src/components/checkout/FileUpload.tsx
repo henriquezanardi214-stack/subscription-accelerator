@@ -40,16 +40,7 @@ export const FileUpload = ({
       return;
     }
 
-    // Validate file type
-    const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
-    if (!allowedTypes.includes(file.type)) {
-      toast({
-        title: "Tipo de arquivo não suportado",
-        description: "Use PDF, JPG, PNG ou WEBP",
-        variant: "destructive",
-      });
-      return;
-    }
+    // All file types are now accepted
 
     setIsUploading(true);
     try {
@@ -100,7 +91,6 @@ export const FileUpload = ({
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf,.jpg,.jpeg,.png,.webp"
         onChange={handleFileSelect}
         className="hidden"
         disabled={disabled || isUploading}
