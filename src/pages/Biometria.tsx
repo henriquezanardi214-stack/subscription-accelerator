@@ -1,9 +1,16 @@
 import { Button } from "@/components/ui/button";
-import { Fingerprint, CheckCircle, ExternalLink } from "lucide-react";
+import { Fingerprint, CheckCircle, ExternalLink, Eye } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const Biometria = () => {
+  const navigate = useNavigate();
+
   const handleAgendarBiometria = () => {
     window.open("https://www.soluti.com.br/", "_blank");
+  };
+
+  const handleVerProcesso = () => {
+    navigate("/acesso-portal");
   };
 
   return (
@@ -61,6 +68,16 @@ const Biometria = () => {
           <p className="text-xs text-muted-foreground mt-4">
             Você será redirecionado para o site da Soluti
           </p>
+
+          <Button
+            onClick={handleVerProcesso}
+            variant="outline"
+            size="lg"
+            className="w-full h-12 mt-4"
+          >
+            <Eye className="mr-2 w-5 h-5" />
+            Ver processo
+          </Button>
         </div>
       </div>
     </div>
