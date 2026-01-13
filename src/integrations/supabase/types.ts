@@ -243,6 +243,7 @@ export type Database = {
           plan_name: string | null
           plan_value: number
           status: string
+          user_id: string | null
         }
         Insert: {
           asaas_customer_id: string
@@ -256,6 +257,7 @@ export type Database = {
           plan_name?: string | null
           plan_value: number
           status: string
+          user_id?: string | null
         }
         Update: {
           asaas_customer_id?: string
@@ -269,6 +271,7 @@ export type Database = {
           plan_name?: string | null
           plan_value?: number
           status?: string
+          user_id?: string | null
         }
         Relationships: [
           {

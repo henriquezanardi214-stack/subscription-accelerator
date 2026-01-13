@@ -238,8 +238,12 @@ const Index = () => {
       }
 
       if (leadId) {
+        // Get user ID for the subscription
+        const { data: { user } } = await supabase.auth.getUser();
+        
         const { error: subError } = await supabase.from("subscriptions").insert({
           lead_id: leadId,
+          user_id: user?.id || null, // Include user_id for RLS
           asaas_customer_id: data.customerId,
           asaas_subscription_id: data.subscriptionId,
           billing_type: paymentData.paymentMethod,
