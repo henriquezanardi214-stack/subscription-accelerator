@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, ExternalLink, Loader2, Clock, FileText, Building2, FileCheck, BadgeCheck } from "lucide-react";
+import { CheckCircle, ExternalLink, Loader2, Clock, FileText, Building2, FileCheck, BadgeCheck, LogOut } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const progressSteps = [
@@ -119,6 +120,12 @@ const AcessoPortal = () => {
     checkAuth();
   }, [navigate]);
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast.success("Logout realizado com sucesso!");
+    navigate("/login");
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -174,6 +181,16 @@ const AcessoPortal = () => {
             <p className="text-xs text-muted-foreground">
               Em breve você receberá atualizações por e-mail sobre cada etapa.
             </p>
+
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={handleLogout}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Sair da conta
+            </Button>
           </div>
         </CardContent>
       </Card>
