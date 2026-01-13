@@ -125,19 +125,22 @@ const Index = () => {
   const handleLeadSubmit = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      // We generate the lead id client-side to avoid needing a SELECT right after INSERT.
+      // Returning representations requires SELECT permission, which is intentionally restricted by RLS.
+      const newLeadId = crypto.randomUUID();
+
+      const { error } = await supabase
         .from("leads")
         .insert({
+          id: newLeadId,
           name: leadData.nome,
           email: leadData.email,
           phone: leadData.telefone,
-        })
-        .select()
-        .single();
+        });
 
       if (error) throw error;
 
-      setLeadId(data.id);
+      setLeadId(newLeadId);
       setCurrentStep(2);
     } catch (error) {
       console.error("Error saving lead:", error);
