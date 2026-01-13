@@ -3,9 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, ExternalLink, Loader2, Clock, FileText, Building2, FileCheck, BadgeCheck, LogOut } from "lucide-react";
+import { CheckCircle, ExternalLink, Loader2, Clock, FileText, Building2, FileCheck, BadgeCheck, LogOut, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+interface ProgressStepProps {
+  step: typeof progressSteps[0]; 
+  index: number; 
+  isLast: boolean;
+  onEditDocuments?: () => void;
+}
 
 const progressSteps = [
   { 
@@ -45,12 +52,9 @@ type StepStatus = "completed" | "current" | "pending";
 const ProgressStep = ({ 
   step, 
   index, 
-  isLast 
-}: { 
-  step: typeof progressSteps[0]; 
-  index: number; 
-  isLast: boolean;
-}) => {
+  isLast,
+  onEditDocuments 
+}: ProgressStepProps) => {
   const Icon = step.icon;
   const isCompleted = step.status === "completed";
   const isCurrent = step.status === "current";
@@ -94,9 +98,22 @@ const ProgressStep = ({
           {step.description}
         </p>
         {isCurrent && (
-          <div className="flex items-center gap-1 mt-1">
-            <Clock className="w-3 h-3 text-primary" />
-            <span className="text-xs text-primary font-medium">Em andamento</span>
+          <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-1">
+              <Clock className="w-3 h-3 text-primary" />
+              <span className="text-xs text-primary font-medium">Em andamento</span>
+            </div>
+            {step.title === "Análise de documentos" && onEditDocuments && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onEditDocuments}
+                className="h-6 px-2 text-xs text-primary hover:text-primary"
+              >
+                <Pencil className="w-3 h-3 mr-1" />
+                Editar documentos
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -159,7 +176,8 @@ const AcessoPortal = () => {
                   key={index} 
                   step={step} 
                   index={index} 
-                  isLast={index === progressSteps.length - 1} 
+                  isLast={index === progressSteps.length - 1}
+                  onEditDocuments={() => navigate("/formulario-abertura")}
                 />
               ))}
             </div>

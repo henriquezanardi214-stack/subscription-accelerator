@@ -17,6 +17,7 @@ import Leads from "./pages/admin/Leads";
 import Qualifications from "./pages/admin/Qualifications";
 import Payments from "./pages/admin/Payments";
 import Documents from "./pages/admin/Documents";
+import FormularioAbertura from "./pages/FormularioAbertura";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
           <Route path="/auth" element={<Auth />} />
           <Route path="/login" element={<Login />} />
           <Route path="/acesso-portal" element={<AcessoPortal />} />
+          <Route path="/formulario-abertura" element={<FormularioAbertura />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Dashboard />} />
             <Route path="leads" element={<Leads />} />

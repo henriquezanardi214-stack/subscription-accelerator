@@ -109,8 +109,8 @@ const Login = () => {
       description: "Redirecionando...",
     });
 
-    // Just navigate to home - Index.tsx will handle the redirection logic
-    navigate("/");
+    // Redirect logged in users to portal access page
+    navigate("/acesso-portal");
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
