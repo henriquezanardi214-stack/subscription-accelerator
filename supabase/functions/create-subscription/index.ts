@@ -379,36 +379,27 @@ serve(async (req) => {
   }
 
   try {
-    // ==================== AUTHENTICATION ====================
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      console.error('Missing or invalid Authorization header');
-      return new Response(
-        JSON.stringify({ success: false, error: 'Autenticação necessária' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Create authenticated Supabase client
-    const supabaseClient = createClient(
-      SUPABASE_URL ?? '',
-      SUPABASE_ANON_KEY ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    // Verify user is authenticated
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    // NOTE: Authentication is optional for this endpoint
+    // Payment can happen before user registration in the checkout flow
+    let userId: string | null = null;
     
-    if (userError || !user) {
-      console.error('Token validation failed:', userError);
-      return new Response(
-        JSON.stringify({ success: false, error: 'Token inválido' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      // Try to get user if auth header is present
+      const supabaseClient = createClient(
+        SUPABASE_URL ?? '',
+        SUPABASE_ANON_KEY ?? '',
+        { global: { headers: { Authorization: authHeader } } }
       );
-    }
 
-    const userId = user.id;
-    console.log('Authenticated user:', userId);
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      if (user) {
+        userId = user.id;
+        console.log('Authenticated user:', userId);
+      }
+    }
+    
+    console.log('Processing payment request (user:', userId || 'anonymous', ')');
 
     // ==================== INPUT VALIDATION ====================
     const requestData: SubscriptionRequest = await req.json();
