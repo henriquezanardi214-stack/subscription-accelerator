@@ -60,19 +60,24 @@ export const StepRegister = ({
     setIsLoading(true);
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password,
         });
 
         if (error) throw error;
+        
+        // Verify session is established
+        if (!data.session) {
+          throw new Error("Sessão não foi criada. Tente novamente.");
+        }
 
         toast({
           title: "Login realizado!",
           description: "Continue o cadastro da sua empresa.",
         });
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
           options: {
@@ -81,6 +86,11 @@ export const StepRegister = ({
         });
 
         if (error) throw error;
+        
+        // Verify session is established (auto-confirm should create session immediately)
+        if (!data.session) {
+          throw new Error("Sessão não foi criada. Tente novamente.");
+        }
 
         toast({
           title: "Conta criada!",
@@ -88,6 +98,9 @@ export const StepRegister = ({
         });
       }
 
+      // Small delay to ensure session is fully propagated
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       onNext();
     } catch (error: unknown) {
       console.error("Auth error:", error);
