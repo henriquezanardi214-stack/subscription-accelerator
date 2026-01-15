@@ -127,20 +127,34 @@ const AcessoPortal = () => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      // First check session from localStorage
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.user) {
-        // If no session, verify with server
-        const { data: { user }, error } = await supabase.auth.getUser();
-        
-        if (error || !user) {
+      // Primeiro tenta pegar a sessão do storage local
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      let userId = session?.user?.id ?? null;
+
+      // Se não tiver sessão local, valida no servidor e reaproveita o user.id
+      if (!userId) {
+        const {
+          data: { user },
+          error,
+        } = await supabase.auth.getUser();
+
+        if (error || !user?.id) {
           console.error("User not authenticated:", error);
           navigate("/login");
           return;
         }
+
+        userId = user.id;
       }
-      
+
+      if (!userId) {
+        navigate("/login");
+        return;
+      }
+
       setLoading(false);
     };
     checkAuth();
