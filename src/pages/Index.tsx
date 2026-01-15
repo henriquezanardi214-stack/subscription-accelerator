@@ -295,13 +295,20 @@ const Index = () => {
 
     setIsLoading(true);
     try {
-      // First get session from localStorage (faster and more reliable than server call)
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      // If no session, verify with server
-      if (!session?.user) {
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        
+      // Primeiro tenta pegar a sessão do storage local (mais rápido e evita falso negativo)
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      let userId = session?.user?.id ?? null;
+
+      // Se não tiver sessão local, valida no servidor e reaproveita o user.id
+      if (!userId) {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
         if (userError || !user?.id) {
           console.error("User not authenticated:", userError);
           toast({
@@ -312,9 +319,10 @@ const Index = () => {
           navigate("/login");
           return;
         }
+
+        userId = user.id;
       }
 
-      const userId = session?.user?.id;
       if (!userId) {
         toast({
           title: "Erro de autenticação",
