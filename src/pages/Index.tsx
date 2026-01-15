@@ -295,7 +295,19 @@ const Index = () => {
 
     setIsLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      // Check if user is authenticated - RLS policy requires user_id = auth.uid()
+      if (userError || !user?.id) {
+        console.error("User not authenticated:", userError);
+        toast({
+          title: "Sessão expirada",
+          description: "Por favor, faça login novamente.",
+          variant: "destructive",
+        });
+        navigate("/login");
+        return;
+      }
 
       // Generate IDs client-side to avoid needing SELECT after INSERT
       const formationId = crypto.randomUUID();
@@ -309,10 +321,13 @@ const Index = () => {
           iptu: iptu,
           has_ecpf: hasEcpf,
           ecpf_certificate_url: companyDocuments.ecpf_url || null,
-          user_id: user?.id || null,
+          user_id: user.id,
         });
 
-      if (formationError) throw formationError;
+      if (formationError) {
+        console.error("Formation error:", formationError);
+        throw formationError;
+      }
 
       // Generate partner IDs client-side
       const partnersToInsert = socios.map((socio) => ({
