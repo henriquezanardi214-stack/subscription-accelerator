@@ -127,8 +127,10 @@ const AcessoPortal = () => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      // Use getUser() instead of getSession() for more reliable auth check
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        console.error("User not authenticated:", error);
         navigate("/login");
         return;
       }
