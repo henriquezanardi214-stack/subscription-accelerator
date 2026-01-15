@@ -295,14 +295,30 @@ const Index = () => {
 
     setIsLoading(true);
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      // First get session from localStorage (faster and more reliable than server call)
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      // If no session, verify with server
+      if (!session?.user) {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        
+        if (userError || !user?.id) {
+          console.error("User not authenticated:", userError);
+          toast({
+            title: "Sessão expirada",
+            description: "Por favor, faça login novamente.",
+            variant: "destructive",
+          });
+          navigate("/login");
+          return;
+        }
+      }
 
-      // Check if user is authenticated - RLS policy requires user_id = auth.uid()
-      if (userError || !user?.id) {
-        console.error("User not authenticated:", userError);
+      const userId = session?.user?.id;
+      if (!userId) {
         toast({
-          title: "Sessão expirada",
-          description: "Por favor, faça login novamente.",
+          title: "Erro de autenticação",
+          description: "Não foi possível identificar o usuário.",
           variant: "destructive",
         });
         navigate("/login");
@@ -321,7 +337,7 @@ const Index = () => {
           iptu: iptu,
           has_ecpf: hasEcpf,
           ecpf_certificate_url: companyDocuments.ecpf_url || null,
-          user_id: user.id,
+          user_id: userId,
         });
 
       if (formationError) {

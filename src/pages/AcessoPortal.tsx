@@ -127,13 +127,20 @@ const AcessoPortal = () => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      // Use getUser() instead of getSession() for more reliable auth check
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error || !user) {
-        console.error("User not authenticated:", error);
-        navigate("/login");
-        return;
+      // First check session from localStorage
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.user) {
+        // If no session, verify with server
+        const { data: { user }, error } = await supabase.auth.getUser();
+        
+        if (error || !user) {
+          console.error("User not authenticated:", error);
+          navigate("/login");
+          return;
+        }
       }
+      
       setLoading(false);
     };
     checkAuth();

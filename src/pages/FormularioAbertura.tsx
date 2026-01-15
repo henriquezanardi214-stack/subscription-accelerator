@@ -22,11 +22,22 @@ const FormularioAbertura = () => {
   // Check user session and load existing data
   useEffect(() => {
     const loadUserData = async () => {
-      // Use getUser() instead of getSession() for more reliable auth check
-      const { data: { user }, error } = await supabase.auth.getUser();
+      // First check session from localStorage
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (error || !user) {
-        console.error("User not authenticated:", error);
+      if (!session?.user) {
+        // If no session, verify with server
+        const { data: { user }, error } = await supabase.auth.getUser();
+        
+        if (error || !user) {
+          console.error("User not authenticated:", error);
+          navigate("/login");
+          return;
+        }
+      }
+
+      const userId = session?.user?.id;
+      if (!userId) {
         navigate("/login");
         return;
       }
@@ -43,7 +54,7 @@ const FormularioAbertura = () => {
           partners (*),
           documents:documents (*)
         `)
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .maybeSingle();
 
       if (formation) {
