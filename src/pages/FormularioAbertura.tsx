@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { StepCompanyForm, Socio, CompanyDocuments, createEmptySocio } from "@/components/checkout/StepCompanyForm";
 import { supabase } from "@/integrations/supabase/client";
+import { requireUserId } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
@@ -22,30 +23,11 @@ const FormularioAbertura = () => {
   // Check user session and load existing data
   useEffect(() => {
     const loadUserData = async () => {
-      // Primeiro tenta pegar a sessão do storage local
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      let userId = session?.user?.id ?? null;
-
-      // Se não tiver sessão local, valida no servidor e reaproveita o user.id
-      if (!userId) {
-        const {
-          data: { user },
-          error,
-        } = await supabase.auth.getUser();
-
-        if (error || !user?.id) {
-          console.error("User not authenticated:", error);
-          navigate("/login");
-          return;
-        }
-
-        userId = user.id;
-      }
-
-      if (!userId) {
+      let userId: string;
+      try {
+        userId = await requireUserId();
+      } catch (err) {
+        console.error("User not authenticated (FormularioAbertura):", err);
         navigate("/login");
         return;
       }

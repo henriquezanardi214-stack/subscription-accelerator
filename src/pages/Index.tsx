@@ -7,6 +7,7 @@ import { StepPayment, plans, PaymentData } from "@/components/checkout/StepPayme
 import { StepRegister } from "@/components/checkout/StepRegister";
 import { StepCompanyForm, Socio, CompanyDocuments, createEmptySocio } from "@/components/checkout/StepCompanyForm";
 import { supabase } from "@/integrations/supabase/client";
+import { requireUserId } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
@@ -295,38 +296,14 @@ const Index = () => {
 
     setIsLoading(true);
     try {
-      // Primeiro tenta pegar a sessão do storage local (mais rápido e evita falso negativo)
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      let userId = session?.user?.id ?? null;
-
-      // Se não tiver sessão local, valida no servidor e reaproveita o user.id
-      if (!userId) {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-
-        if (userError || !user?.id) {
-          console.error("User not authenticated:", userError);
-          toast({
-            title: "Sessão expirada",
-            description: "Por favor, faça login novamente.",
-            variant: "destructive",
-          });
-          navigate("/login");
-          return;
-        }
-
-        userId = user.id;
-      }
-
-      if (!userId) {
+      let userId: string;
+      try {
+        userId = await requireUserId();
+      } catch (err) {
+        console.error("User not authenticated (submit step 5):", err);
         toast({
-          title: "Erro de autenticação",
-          description: "Não foi possível identificar o usuário.",
+          title: "Sessão expirada",
+          description: "Por favor, faça login novamente.",
           variant: "destructive",
         });
         navigate("/login");

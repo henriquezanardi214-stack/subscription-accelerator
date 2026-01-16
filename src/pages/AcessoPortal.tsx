@@ -1,60 +1,73 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { requireUserId } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle, ExternalLink, Loader2, Clock, FileText, Building2, FileCheck, BadgeCheck, LogOut, Pencil } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  CheckCircle,
+  ExternalLink,
+  Loader2,
+  Clock,
+  FileText,
+  Building2,
+  FileCheck,
+  BadgeCheck,
+  LogOut,
+  Pencil,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 interface ProgressStepProps {
-  step: typeof progressSteps[0]; 
-  index: number; 
+  step: typeof progressSteps[0];
+  index: number;
   isLast: boolean;
   onEditDocuments?: () => void;
 }
 
 const progressSteps = [
-  { 
-    title: "Cadastro recebido", 
+  {
+    title: "Cadastro recebido",
     description: "Seus dados foram enviados com sucesso",
     icon: CheckCircle,
-    status: "completed" as const
+    status: "completed" as const,
   },
-  { 
-    title: "Análise de documentos", 
+  {
+    title: "Análise de documentos",
     description: "Verificando documentação enviada",
     icon: FileText,
-    status: "current" as const
+    status: "current" as const,
   },
-  { 
-    title: "Registro na Junta", 
+  {
+    title: "Registro na Junta",
     description: "Protocolo na Junta Comercial",
     icon: Building2,
-    status: "pending" as const
+    status: "pending" as const,
   },
-  { 
-    title: "Emissão do CNPJ", 
+  {
+    title: "Emissão do CNPJ",
     description: "Cadastro na Receita Federal",
     icon: FileCheck,
-    status: "pending" as const
+    status: "pending" as const,
   },
-  { 
-    title: "Inscrições fiscais", 
+  {
+    title: "Inscrições fiscais",
     description: "Municipal e/ou Estadual",
     icon: BadgeCheck,
-    status: "pending" as const
+    status: "pending" as const,
   },
 ];
 
 type StepStatus = "completed" | "current" | "pending";
 
-const ProgressStep = ({ 
-  step, 
-  index, 
-  isLast,
-  onEditDocuments 
-}: ProgressStepProps) => {
+const ProgressStep = ({ step, index, isLast, onEditDocuments }: ProgressStepProps) => {
   const Icon = step.icon;
   const isCompleted = step.status === "completed";
   const isCurrent = step.status === "current";
@@ -66,7 +79,8 @@ const ProgressStep = ({
           className={cn(
             "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
             isCompleted && "bg-green-500 text-white",
-            isCurrent && "gradient-primary text-primary-foreground shadow-glow animate-pulse",
+            isCurrent &&
+              "gradient-primary text-primary-foreground shadow-glow animate-pulse",
             !isCompleted && !isCurrent && "bg-muted text-muted-foreground"
           )}
         >
@@ -89,14 +103,12 @@ const ProgressStep = ({
         <p
           className={cn(
             "text-sm font-medium transition-colors",
-            (isCompleted || isCurrent) ? "text-foreground" : "text-muted-foreground"
+            isCompleted || isCurrent ? "text-foreground" : "text-muted-foreground"
           )}
         >
           {step.title}
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {step.description}
-        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
         {isCurrent && (
           <div className="flex items-center gap-2 mt-1">
             <div className="flex items-center gap-1">
@@ -127,35 +139,13 @@ const AcessoPortal = () => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      // Primeiro tenta pegar a sessão do storage local
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      let userId = session?.user?.id ?? null;
-
-      // Se não tiver sessão local, valida no servidor e reaproveita o user.id
-      if (!userId) {
-        const {
-          data: { user },
-          error,
-        } = await supabase.auth.getUser();
-
-        if (error || !user?.id) {
-          console.error("User not authenticated:", error);
-          navigate("/login");
-          return;
-        }
-
-        userId = user.id;
-      }
-
-      if (!userId) {
+      try {
+        await requireUserId();
+        setLoading(false);
+      } catch (err) {
+        console.error("User not authenticated (AcessoPortal):", err);
         navigate("/login");
-        return;
       }
-
-      setLoading(false);
     };
     checkAuth();
   }, [navigate]);
@@ -181,24 +171,20 @@ const AcessoPortal = () => {
           <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
             <CheckCircle className="h-10 w-10 text-green-600" />
           </div>
-          <CardTitle className="text-2xl font-bold">
-            Cadastro concluído com sucesso!
-          </CardTitle>
+          <CardTitle className="text-2xl font-bold">Cadastro concluído com sucesso!</CardTitle>
           <CardDescription className="text-base">
             Seu processo de abertura de empresa está sendo realizado pela nossa equipe.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="bg-muted/30 rounded-lg p-6">
-            <h3 className="text-sm font-semibold text-foreground mb-4">
-              Progresso da abertura
-            </h3>
+            <h3 className="text-sm font-semibold text-foreground mb-4">Progresso da abertura</h3>
             <div className="space-y-0">
               {progressSteps.map((step, index) => (
-                <ProgressStep 
-                  key={index} 
-                  step={step} 
-                  index={index} 
+                <ProgressStep
+                  key={index}
+                  step={step}
+                  index={index}
                   isLast={index === progressSteps.length - 1}
                   onEditDocuments={() => navigate("/formulario-abertura")}
                 />
@@ -206,12 +192,10 @@ const AcessoPortal = () => {
             </div>
           </div>
           <div className="text-center space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Acompanhe o andamento completo no portal do cliente:
-            </p>
-            
-            <Button 
-              className="w-full gradient-primary" 
+            <p className="text-sm text-muted-foreground">Acompanhe o andamento completo no portal do cliente:</p>
+
+            <Button
+              className="w-full gradient-primary"
               size="lg"
               onClick={() => window.open("https://portal.contabiliadigital.com.br/", "_blank")}
             >
@@ -223,8 +207,8 @@ const AcessoPortal = () => {
               Em breve você receberá atualizações por e-mail sobre cada etapa.
             </p>
 
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="sm"
               onClick={handleLogout}
               className="text-muted-foreground hover:text-foreground"
