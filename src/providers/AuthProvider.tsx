@@ -27,19 +27,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+    // We manage refresh explicitly (via ensureUserId/refresh). Auto-refresh can race during
+    // initial hydration on some browsers/environments and briefly clear auth state.
+    (supabase.auth as any).stopAutoRefresh?.();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!mounted) return;
 
       setSession(nextSession);
 
-      // Mark as initialized as soon as we get any signal.
-      if (!initializedRef.current) {
+      const shouldInitialize =
+        event === "INITIAL_SESSION" ||
+        event === "SIGNED_IN" ||
+        event === "SIGNED_OUT" ||
+        event === "TOKEN_REFRESHED" ||
+        event === "USER_UPDATED";
+
+      if (!initializedRef.current && shouldInitialize) {
         initializedRef.current = true;
         setIsLoading(false);
+        return;
       }
 
-      // Keep loading=false for subsequent events.
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "SIGNED_OUT") {
+      // After initialization, keep loading=false for subsequent events.
+      if (initializedRef.current) {
         setIsLoading(false);
       }
     });
@@ -92,35 +105,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // If the app just navigated, hydration can lag slightly; wait for the initial auth snapshot.
     await waitForHydration();
 
-    // Prefer the in-memory session (set by onAuthStateChange). This avoids extra auth calls
-    // that can temporarily clear state during token rotation.
+    // Prefer the in-memory session (set by onAuthStateChange).
     if (session?.user?.id) return session.user.id;
 
-    // Fallback 1: read directly from persisted session
+    // Read directly from persisted session
     const { data: first, error: firstErr } = await supabase.auth.getSession();
     if (firstErr) console.warn("[auth] getSession error (ensureUserId):", firstErr);
     if (first.session?.user?.id) return first.session.user.id;
 
-    // Fallback 2: if there's a valid access token but the session snapshot is stale, /user can still work.
-    const { data: firstUser, error: firstUserErr } = await supabase.auth.getUser();
-    if (!firstUserErr && firstUser.user?.id) return firstUser.user.id;
+    // Only call /user or refresh if we actually have tokens to work with.
+    const tokenSource = first.session ?? session;
+
+    // Fallback: if there is an access token but the session snapshot is stale, /user can still work.
+    if (tokenSource?.access_token) {
+      const { data: userData, error: userErr } = await supabase.auth.getUser();
+      if (!userErr && userData.user?.id) return userData.user.id;
+      if (userErr) console.warn("[auth] getUser error (ensureUserId):", userErr);
+    }
 
     // Last resort: refresh tokens (covers long forms / token expiry)
-    const refreshed = await refresh();
-    if (refreshed?.user?.id) return refreshed.user.id;
+    if (tokenSource?.refresh_token) {
+      const refreshed = await refresh();
+      if (refreshed?.user?.id) return refreshed.user.id;
 
-    const { data: last } = await supabase.auth.getSession();
-    if (last.session?.user?.id) return last.session.user.id;
+      const { data: last, error: lastErr } = await supabase.auth.getSession();
+      if (lastErr) console.warn("[auth] getSession error after refresh (ensureUserId):", lastErr);
+      if (last.session?.user?.id) return last.session.user.id;
+    }
 
-    const { data: lastUser, error: lastUserErr } = await supabase.auth.getUser();
-    if (!lastUserErr && lastUser.user?.id) return lastUser.user.id;
-
-    const detail =
-      firstErr?.message ??
-      firstUserErr?.message ??
-      lastUserErr?.message ??
-      "AUTH_REQUIRED";
-
+    const detail = firstErr?.message ?? "AUTH_REQUIRED";
     throw new AuthRequiredError(detail);
   }, [refresh, session, waitForHydration]);
 
