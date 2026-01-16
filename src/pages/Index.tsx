@@ -21,10 +21,11 @@ const steps = [
 
 const Index = () => {
   const navigate = useNavigate();
-  
   const { toast } = useToast();
-  // Auth context (session + refresh)
-  const { user, isLoading: authLoading, ensureUserId } = useAuth();
+
+  // Auth context (session + refresh helpers)
+  const auth = useAuth();
+
   const [isLoadingResume, setIsLoadingResume] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
   const [leadId, setLeadId] = useState<string | null>(null);
@@ -57,10 +58,10 @@ const Index = () => {
   useEffect(() => {
     const checkUserAndLoadData = async () => {
       // Wait for auth hydration
-      if (authLoading) return;
+      if (auth.isLoading) return;
 
       // If not logged in, show step 1
-      if (!user) {
+      if (!auth.user) {
         setIsLoadingResume(false);
         return;
       }
@@ -78,7 +79,7 @@ const Index = () => {
           partners (*),
           documents:documents (*)
         `)
-        .eq("user_id", user.id)
+        .eq("user_id", auth.user.id)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -127,7 +128,7 @@ const Index = () => {
     };
 
     checkUserAndLoadData();
-  }, [authLoading, navigate, user]);
+  }, [auth.isLoading, auth.user, navigate]);
 
   // Only skip registration step if user just completed it (from StepRegister's onNext)
   // Do NOT auto-skip based on session alone - the registration step is intentional
@@ -251,12 +252,18 @@ const Index = () => {
       }
 
       if (leadId) {
-        // Get user ID for the subscription
-        const { data: { user } } = await supabase.auth.getUser();
-        
+        // Use ensureUserId to get user ID safely (handles token rotation)
+        let currentUserId: string | null = null;
+        try {
+          currentUserId = await auth.ensureUserId();
+        } catch {
+          // User not authenticated yet - that's fine for payment step
+          currentUserId = null;
+        }
+
         const { error: subError } = await supabase.from("subscriptions").insert({
           lead_id: leadId,
-          user_id: user?.id || null, // Include user_id for RLS
+          user_id: currentUserId,
           asaas_customer_id: data.customerId,
           asaas_subscription_id: data.subscriptionId,
           billing_type: paymentData.paymentMethod,
@@ -307,7 +314,7 @@ const Index = () => {
     try {
       let userId: string;
       try {
-        userId = await ensureUserId();
+        userId = await auth.ensureUserId();
       } catch (err) {
         console.error("User not authenticated (submit step 5):", err);
         console.info("[auth] redirecting to /login from step 5", {
@@ -338,7 +345,6 @@ const Index = () => {
           ecpf_certificate_url: companyDocuments.ecpf_url || null,
           user_id: userId,
         });
-
 
       if (formationError) {
         console.error("Formation error:", formationError);
@@ -517,7 +523,7 @@ const Index = () => {
                 onUpdateCompanyDocuments={setCompanyDocuments}
                 onBack={handleBack}
                 onSubmit={handleSubmit}
-                isLoading={isLoading || authLoading}
+                isLoading={isLoading || auth.isLoading}
               />
             )}
           </div>
