@@ -92,19 +92,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // If the app just navigated, hydration can lag slightly; wait for the initial auth snapshot.
     await waitForHydration();
 
+    // Prefer the in-memory session (set by onAuthStateChange). This avoids extra auth calls
+    // that can temporarily clear state during token rotation.
+    if (session?.user?.id) return session.user.id;
+
+    // Fallback 1: read directly from persisted session
     const { data: first, error: firstErr } = await supabase.auth.getSession();
     if (firstErr) console.warn("[auth] getSession error (ensureUserId):", firstErr);
     if (first.session?.user?.id) return first.session.user.id;
 
-    // Try a refresh in case tokens expired during a long form.
+    // Fallback 2: if there's a valid access token but the session snapshot is stale, /user can still work.
+    const { data: firstUser, error: firstUserErr } = await supabase.auth.getUser();
+    if (!firstUserErr && firstUser.user?.id) return firstUser.user.id;
+
+    // Last resort: refresh tokens (covers long forms / token expiry)
     const refreshed = await refresh();
     if (refreshed?.user?.id) return refreshed.user.id;
 
     const { data: last } = await supabase.auth.getSession();
     if (last.session?.user?.id) return last.session.user.id;
 
-    throw new AuthRequiredError();
-  }, [refresh, waitForHydration]);
+    const { data: lastUser, error: lastUserErr } = await supabase.auth.getUser();
+    if (!lastUserErr && lastUser.user?.id) return lastUser.user.id;
+
+    const detail =
+      firstErr?.message ??
+      firstUserErr?.message ??
+      lastUserErr?.message ??
+      "AUTH_REQUIRED";
+
+    throw new AuthRequiredError(detail);
+  }, [refresh, session, waitForHydration]);
 
   const value = useMemo<AuthContextValue>(() => {
     return {

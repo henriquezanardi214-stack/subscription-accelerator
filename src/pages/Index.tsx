@@ -23,6 +23,7 @@ const Index = () => {
   const navigate = useNavigate();
   
   const { toast } = useToast();
+  // Auth context (session + refresh)
   const { user, isLoading: authLoading, ensureUserId } = useAuth();
   const [isLoadingResume, setIsLoadingResume] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
