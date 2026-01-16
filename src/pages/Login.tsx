@@ -63,6 +63,10 @@ const Login = () => {
   const handleLogout = async () => {
     setLoading(true);
     try {
+      // Ensure backup is cleared so we don't accidentally "restore" after an intentional logout.
+      const { clearSessionBackup } = await import("@/lib/authStorage");
+      clearSessionBackup();
+
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
 
