@@ -3,23 +3,27 @@ import { useNavigate } from "react-router-dom";
 import { StepCompanyForm, Socio, CompanyDocuments, createEmptySocio } from "@/components/checkout/StepCompanyForm";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useCompanyFormationSubmit } from "@/hooks/useCompanyFormationSubmit";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
 const FormularioAbertura = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, isLoading: authLoading, ensureUserId } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formationId, setFormationId] = useState<string | null>(null);
-  const [leadId, setLeadId] = useState<string | null>(null);
 
   // Company Form State
   const [socios, setSocios] = useState<Socio[]>([createEmptySocio()]);
   const [iptu, setIptu] = useState("");
   const [hasEcpf, setHasEcpf] = useState(false);
   const [companyDocuments, setCompanyDocuments] = useState<CompanyDocuments>({});
+
+  // Hook for submission
+  const { isSubmitting, updateFormation } = useCompanyFormationSubmit({
+    onSessionExpired: () => navigate("/login"),
+  });
 
   // Load existing data once auth is hydrated
   useEffect(() => {
@@ -29,7 +33,6 @@ const FormularioAbertura = () => {
 
       const userId = user.id;
 
-      // Load existing company formation data (use the most recent one)
       const { data: formation, error: formationError } = await supabase
         .from("company_formations")
         .select(`
@@ -52,14 +55,11 @@ const FormularioAbertura = () => {
 
       if (formation) {
         setFormationId(formation.id);
-        setLeadId(formation.lead_id);
         setIptu(formation.iptu || "");
         setHasEcpf(formation.has_ecpf || false);
 
-        // Load documents
         const documents = (formation.documents as any[] | null) ?? [];
 
-        // Load partners (with partner documents)
         const partners = formation.partners as any[] | null;
         if (partners && partners.length > 0) {
           const loadedSocios: Socio[] = partners.map((partner: any) => {
@@ -90,7 +90,6 @@ const FormularioAbertura = () => {
           setSocios(loadedSocios);
         }
 
-        // Load company documents
         if (documents.length > 0) {
           const newCompanyDocuments: CompanyDocuments = {};
           documents.forEach((doc: any) => {
@@ -108,7 +107,6 @@ const FormularioAbertura = () => {
           setCompanyDocuments(newCompanyDocuments);
         }
       } else {
-        // No formation exists - redirect to home
         toast({
           title: "Nenhum cadastro encontrado",
           description: "Complete as etapas anteriores primeiro.",
@@ -128,130 +126,24 @@ const FormularioAbertura = () => {
     navigate("/acesso-portal");
   };
 
+  /**
+   * Submit handler - uses the extracted hook.
+   * hasEcpfFromForm comes from the form (user's selection at submit time).
+   */
   const handleSubmit = async (hasEcpfFromForm: boolean) => {
-    if (!formationId || !leadId) return;
+    if (!formationId) return;
 
-    setIsSubmitting(true);
-    try {
-      // Garante sessão válida (tenta refresh se necessário) antes de fazer operações no backend
-      await ensureUserId();
-
-      // Update company formation record
-      const { error: formationError } = await supabase
-        .from("company_formations")
-        .update({
-          iptu: iptu,
-          has_ecpf: hasEcpf,
-          ecpf_certificate_url: companyDocuments.ecpf_url || null,
-        })
-        .eq("id", formationId);
-
-      if (formationError) throw formationError;
-
-      // Delete existing partners and documents to re-insert
-      await supabase.from("partners").delete().eq("company_formation_id", formationId);
-      await supabase.from("documents").delete().eq("company_formation_id", formationId);
-
-      // Generate partner IDs client-side to avoid needing SELECT after INSERT
-      const partnersToInsert = socios.map((socio) => ({
-        id: crypto.randomUUID(),
-        company_formation_id: formationId,
-        name: socio.nome,
-        rg: socio.rg,
-        cpf: socio.cpf.replace(/\D/g, ""),
-        cep: socio.cep.replace(/\D/g, ""),
-        address: socio.endereco,
-        city_state: socio.cidadeUf,
-        marital_status: socio.estadoCivil,
-        birthplace_city: socio.naturalidadeCidade,
-        birthplace_state: socio.naturalidadeEstado,
-      }));
-
-      const { error: partnersError } = await supabase
-        .from("partners")
-        .insert(partnersToInsert);
-
-      if (partnersError) throw partnersError;
-
-      // Save company documents
-      const documentsToInsert = [];
-
-      if (companyDocuments.iptu_url) {
-        documentsToInsert.push({
-          company_formation_id: formationId,
-          document_type: "iptu_capa",
-          file_name: companyDocuments.iptu_name || "iptu",
-          file_url: companyDocuments.iptu_url,
-        });
-      }
-
-      if (companyDocuments.avcb_url) {
-        documentsToInsert.push({
-          company_formation_id: formationId,
-          document_type: "avcb",
-          file_name: companyDocuments.avcb_name || "avcb",
-          file_url: companyDocuments.avcb_url,
-        });
-      }
-
-      // Save partner documents using the generated partner IDs
-      for (let i = 0; i < socios.length; i++) {
-        const socio = socios[i];
-        const partnerId = partnersToInsert[i].id;
-
-        if (socio.documents.rg_url) {
-          documentsToInsert.push({
-            company_formation_id: formationId,
-            partner_id: partnerId,
-            document_type: "rg",
-            file_name: socio.documents.rg_name || "rg",
-            file_url: socio.documents.rg_url,
-          });
-        }
-
-        if (socio.documents.cnh_url) {
-          documentsToInsert.push({
-            company_formation_id: formationId,
-            partner_id: partnerId,
-            document_type: "cnh",
-            file_name: socio.documents.cnh_name || "cnh",
-            file_url: socio.documents.cnh_url,
-          });
-        }
-      }
-
-      if (documentsToInsert.length > 0) {
-        const { error: docsError } = await supabase
-          .from("documents")
-          .insert(documentsToInsert);
-
-        if (docsError) {
-          console.error("Error saving documents:", docsError);
-        }
-      }
-
-      toast({
-        title: "Dados atualizados!",
-        description: "Suas informações foram salvas com sucesso.",
-      });
-
-      if (hasEcpfFromForm) {
-        navigate("/acesso-portal");
-      } else {
-        navigate("/biometria");
-      }
-    } catch (error) {
-      console.error("Error saving company data:", error);
-      toast({
-        title: "Erro ao salvar dados",
-        description: "Tente novamente mais tarde.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+    await updateFormation(
+      {
+        formationId,
+        socios,
+        iptu,
+        hasEcpf,
+        companyDocuments,
+      },
+      hasEcpfFromForm
+    );
   };
-
 
   if (authLoading || isLoading) {
     return (
@@ -269,9 +161,7 @@ const FormularioAbertura = () => {
           <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-2">
             Editar dados da empresa
           </h1>
-          <p className="text-muted-foreground">
-            Atualize as informações do seu cadastro
-          </p>
+          <p className="text-muted-foreground">Atualize as informações do seu cadastro</p>
         </div>
 
         {/* Form Container */}
@@ -298,4 +188,3 @@ const FormularioAbertura = () => {
 };
 
 export default FormularioAbertura;
-
