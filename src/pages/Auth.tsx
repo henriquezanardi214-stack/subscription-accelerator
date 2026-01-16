@@ -57,8 +57,6 @@ const Auth = () => {
         description: "Você não tem permissão de administrador.",
         variant: "destructive",
       });
-      const { clearSessionBackup } = await import("@/lib/authStorage");
-      clearSessionBackup();
       await supabase.auth.signOut();
       setCheckingAuth(false);
     }
