@@ -1,14 +1,15 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { StepCompanyForm, Socio, CompanyDocuments, createEmptySocio } from "@/components/checkout/StepCompanyForm";
 import { supabase } from "@/integrations/supabase/client";
-import { requireUserId } from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
 const FormularioAbertura = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, isLoading: authLoading, ensureUserId } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formationId, setFormationId] = useState<string | null>(null);
@@ -20,27 +21,13 @@ const FormularioAbertura = () => {
   const [hasEcpf, setHasEcpf] = useState(false);
   const [companyDocuments, setCompanyDocuments] = useState<CompanyDocuments>({});
 
-  // Check user session and load existing data
+  // Load existing data once auth is hydrated
   useEffect(() => {
     const loadUserData = async () => {
-      let userId: string;
-      try {
-        userId = await requireUserId();
-      } catch (err) {
-        console.error("User not authenticated (FormularioAbertura):", err);
-        console.info("[auth] redirecting to /login from /formulario-abertura", {
-          origin: window.location.origin,
-          path: window.location.pathname,
-        });
-        const detail = err instanceof Error ? err.message : String(err);
-        toast({
-          title: "Sessão expirada",
-          description: `Faça login novamente. (${detail})`,
-          variant: "destructive",
-        });
-        navigate("/login");
-        return;
-      }
+      if (authLoading) return;
+      if (!user) return; // ProtectedRoute handles redirect
+
+      const userId = user.id;
 
       // Load existing company formation data (use the most recent one)
       const { data: formation, error: formationError } = await supabase
@@ -135,7 +122,7 @@ const FormularioAbertura = () => {
     };
 
     loadUserData();
-  }, [navigate, toast]);
+  }, [authLoading, navigate, toast, user]);
 
   const handleBack = () => {
     navigate("/acesso-portal");
@@ -147,7 +134,7 @@ const FormularioAbertura = () => {
     setIsSubmitting(true);
     try {
       // Garante sessão válida (tenta refresh se necessário) antes de fazer operações no backend
-      await requireUserId();
+      await ensureUserId();
 
       // Update company formation record
       const { error: formationError } = await supabase
@@ -243,16 +230,16 @@ const FormularioAbertura = () => {
         }
       }
 
-       toast({
-         title: "Dados atualizados!",
-         description: "Suas informações foram salvas com sucesso.",
-       });
+      toast({
+        title: "Dados atualizados!",
+        description: "Suas informações foram salvas com sucesso.",
+      });
 
-       if (hasEcpfFromForm) {
-         navigate("/acesso-portal");
-       } else {
-         navigate("/biometria");
-       }
+      if (hasEcpfFromForm) {
+        navigate("/acesso-portal");
+      } else {
+        navigate("/biometria");
+      }
     } catch (error) {
       console.error("Error saving company data:", error);
       toast({
@@ -265,7 +252,8 @@ const FormularioAbertura = () => {
     }
   };
 
-  if (isLoading) {
+
+  if (authLoading || isLoading) {
     return (
       <div className="min-h-screen gradient-hero flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -300,7 +288,7 @@ const FormularioAbertura = () => {
               onUpdateCompanyDocuments={setCompanyDocuments}
               onBack={handleBack}
               onSubmit={handleSubmit}
-              isLoading={isSubmitting}
+              isLoading={isSubmitting || authLoading}
             />
           </div>
         </div>
@@ -310,3 +298,4 @@ const FormularioAbertura = () => {
 };
 
 export default FormularioAbertura;
+

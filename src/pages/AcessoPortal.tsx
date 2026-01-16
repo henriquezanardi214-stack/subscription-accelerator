@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { requireUserId } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,7 +11,6 @@ import {
 import {
   CheckCircle,
   ExternalLink,
-  Loader2,
   Clock,
   FileText,
   Building2,
@@ -135,40 +132,12 @@ const ProgressStep = ({ step, index, isLast, onEditDocuments }: ProgressStepProp
 
 const AcessoPortal = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        await requireUserId();
-        setLoading(false);
-      } catch (err) {
-        console.error("User not authenticated (AcessoPortal):", err);
-        console.info("[auth] redirecting to /login from /acesso-portal", {
-          origin: window.location.origin,
-          path: window.location.pathname,
-        });
-        const detail = err instanceof Error ? err.message : String(err);
-        toast.error(`Sessão expirada. (${detail})`);
-        navigate("/login");
-      }
-    };
-    checkAuth();
-  }, [navigate]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     toast.success("Logout realizado com sucesso!");
     navigate("/login");
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen gradient-hero flex items-center justify-center p-4">
@@ -230,3 +199,4 @@ const AcessoPortal = () => {
 };
 
 export default AcessoPortal;
+
