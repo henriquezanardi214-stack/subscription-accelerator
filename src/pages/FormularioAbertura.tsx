@@ -126,7 +126,7 @@ const FormularioAbertura = () => {
     navigate("/acesso-portal");
   };
 
-  const handleSubmit = async (needsBiometria: boolean) => {
+  const handleSubmit = async (hasEcpfFromForm: boolean) => {
     if (!formationId || !leadId) return;
 
     setIsSubmitting(true);
@@ -228,12 +228,16 @@ const FormularioAbertura = () => {
         }
       }
 
-      toast({
-        title: "Dados atualizados!",
-        description: "Suas informações foram salvas com sucesso.",
-      });
+       toast({
+         title: "Dados atualizados!",
+         description: "Suas informações foram salvas com sucesso.",
+       });
 
-      navigate("/acesso-portal");
+       if (hasEcpfFromForm) {
+         navigate("/acesso-portal");
+       } else {
+         navigate("/biometria");
+       }
     } catch (error) {
       console.error("Error saving company data:", error);
       toast({

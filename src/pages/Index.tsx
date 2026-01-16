@@ -291,7 +291,7 @@ const Index = () => {
     setCurrentStep(5);
   };
 
-  const handleSubmit = async (needsBiometria: boolean) => {
+  const handleSubmit = async (hasEcpfFromForm: boolean) => {
     if (!leadId) return;
 
     setIsLoading(true);
@@ -413,10 +413,10 @@ const Index = () => {
         }
       }
 
-      if (needsBiometria) {
-        navigate("/biometria");
+      if (hasEcpfFromForm) {
+        navigate("/acesso-portal");
       } else {
-        navigate("/sucesso");
+        navigate("/biometria");
       }
     } catch (error) {
       console.error("Error saving company data:", error);
