@@ -317,11 +317,25 @@ const Index = () => {
         userId = await auth.ensureUserId();
       } catch (err) {
         console.error("User not authenticated (submit step 5):", err);
+
+        const detail = err instanceof Error ? err.message : String(err);
+        const isNetwork = /failed to fetch|network|fetch/i.test(detail);
+
+        // Não derruba a sessão em erros transitórios de rede/CORS no refresh_token.
+        if (isNetwork) {
+          toast({
+            title: "Conexão instável",
+            description: "Não foi possível validar sua sessão agora. Verifique sua internet e tente novamente.",
+            variant: "destructive",
+          });
+          return;
+        }
+
         console.info("[auth] redirecting to /login from step 5", {
           origin: window.location.origin,
           path: window.location.pathname,
         });
-        const detail = err instanceof Error ? err.message : String(err);
+
         toast({
           title: "Sessão expirada",
           description: `Por favor, faça login novamente. (${detail})`,

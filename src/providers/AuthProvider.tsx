@@ -108,34 +108,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Prefer the in-memory session (set by onAuthStateChange).
     if (session?.user?.id) return session.user.id;
 
-    // Read directly from persisted session
-    const { data: first, error: firstErr } = await supabase.auth.getSession();
-    if (firstErr) console.warn("[auth] getSession error (ensureUserId):", firstErr);
-    if (first.session?.user?.id) return first.session.user.id;
-
-    // Only call /user or refresh if we actually have tokens to work with.
-    const tokenSource = first.session ?? session;
-
-    // Fallback: if there is an access token but the session snapshot is stale, /user can still work.
-    if (tokenSource?.access_token) {
-      const { data: userData, error: userErr } = await supabase.auth.getUser();
-      if (!userErr && userData.user?.id) return userData.user.id;
-      if (userErr) console.warn("[auth] getUser error (ensureUserId):", userErr);
+    // Avoid hitting refresh_token immediately (can fail via network/CORS and cause unwanted sign-outs).
+    // First, retry reading the persisted session for a short window.
+    const retryDelaysMs = [0, 120, 250, 500, 800];
+    for (const delay of retryDelaysMs) {
+      if (delay) await sleep(delay);
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.warn("[auth] getSession error (ensureUserId):", error);
+        continue;
+      }
+      if (data.session?.user?.id) {
+        // Keep context in sync so route guards won't bounce.
+        setSession(data.session);
+        return data.session.user.id;
+      }
     }
 
-    // Last resort: refresh tokens (covers long forms / token expiry)
-    if (tokenSource?.refresh_token) {
-      const refreshed = await refresh();
-      if (refreshed?.user?.id) return refreshed.user.id;
-
-      const { data: last, error: lastErr } = await supabase.auth.getSession();
-      if (lastErr) console.warn("[auth] getSession error after refresh (ensureUserId):", lastErr);
-      if (last.session?.user?.id) return last.session.user.id;
-    }
-
-    const detail = firstErr?.message ?? "AUTH_REQUIRED";
-    throw new AuthRequiredError(detail);
-  }, [refresh, session, waitForHydration]);
+    // If we get here, we truly don't have a session snapshot.
+    throw new AuthRequiredError("AUTH_REQUIRED");
+  }, [session, waitForHydration]);
 
   const value = useMemo<AuthContextValue>(() => {
     return {
