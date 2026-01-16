@@ -33,6 +33,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const initializedRef = useRef(false);
 
+  // Refs para evitar closures "stale" dentro de callbacks async (ex.: ensureUserId)
+  const sessionRef = useRef<Session | null>(null);
+  const isLoadingRef = useRef(true);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -90,44 +102,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setSession(null);
+    sessionRef.current = null;
   }, []);
 
   const ensureUserId = useCallback(async (): Promise<string> => {
-    // Wait for loading to complete
+    // Espera a hidratação inicial do auth (sem depender de closures antigas)
     const waitMs = 3000;
     const start = Date.now();
-    while (isLoading && Date.now() - start < waitMs) {
+    while (isLoadingRef.current && Date.now() - start < waitMs) {
       await new Promise((r) => setTimeout(r, 50));
     }
 
     // Check in-memory session
-    if (session?.user?.id) {
-      return session.user.id;
+    const inMemory = sessionRef.current;
+    if (inMemory?.user?.id) {
+      return inMemory.user.id;
     }
 
     // Check storage
     const stored = readStoredSession();
     if (isSessionValid(stored)) {
       setSession(stored);
+      sessionRef.current = stored;
       return stored.user.id;
     }
 
-    // Try getSession (network)
+    // Try getSession (may trigger network refresh)
     const { data, error } = await supabase.auth.getSession();
     if (error) {
       const msg = error.message?.toLowerCase() ?? "";
       if (msg.includes("fetch") || msg.includes("network")) {
-        throw error; // Transient, let caller handle
+        throw error; // Transiente, deixe o caller decidir
       }
     }
 
     if (data.session?.user?.id) {
       setSession(data.session);
+      sessionRef.current = data.session;
       return data.session.user.id;
     }
 
     throw new AuthRequiredError();
-  }, [isLoading, session]);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
