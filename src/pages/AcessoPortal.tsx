@@ -62,7 +62,7 @@ const progressSteps = [
   },
 ];
 
-type StepStatus = "completed" | "current" | "pending";
+// type StepStatus - removed (unused)
 
 const ProgressStep = ({ step, index, isLast, onEditDocuments }: ProgressStepProps) => {
   const Icon = step.icon;
