@@ -42,8 +42,8 @@ const FormularioAbertura = () => {
         return;
       }
 
-      // Load existing company formation data
-      const { data: formation } = await supabase
+      // Load existing company formation data (use the most recent one)
+      const { data: formation, error: formationError } = await supabase
         .from("company_formations")
         .select(`
           id,
@@ -55,7 +55,13 @@ const FormularioAbertura = () => {
           documents:documents (*)
         `)
         .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
+
+      if (formationError) {
+        console.error("Error fetching company formation (FormularioAbertura):", formationError);
+      }
 
       if (formation) {
         setFormationId(formation.id);
@@ -63,33 +69,42 @@ const FormularioAbertura = () => {
         setIptu(formation.iptu || "");
         setHasEcpf(formation.has_ecpf || false);
 
-        // Load partners if they exist
+        // Load documents
+        const documents = (formation.documents as any[] | null) ?? [];
+
+        // Load partners (with partner documents)
         const partners = formation.partners as any[] | null;
         if (partners && partners.length > 0) {
-          const loadedSocios: Socio[] = partners.map((partner: any) => ({
-            id: partner.id,
-            nome: partner.name || "",
-            rg: partner.rg || "",
-            cpf: partner.cpf || "",
-            cep: partner.cep || "",
-            endereco: partner.address || "",
-            cidadeUf: partner.city_state || "",
-            estadoCivil: partner.marital_status || "",
-            naturalidadeCidade: partner.birthplace_city || "",
-            naturalidadeEstado: partner.birthplace_state || "",
-            documents: {
-              rg_url: "",
-              rg_name: "",
-              cnh_url: "",
-              cnh_name: "",
-            },
-          }));
+          const loadedSocios: Socio[] = partners.map((partner: any) => {
+            const partnerDocs = documents.filter((d) => d.partner_id === partner.id);
+            const rgDoc = partnerDocs.find((d) => d.document_type === "rg");
+            const cnhDoc = partnerDocs.find((d) => d.document_type === "cnh");
+
+            return {
+              id: partner.id,
+              nome: partner.name || "",
+              rg: partner.rg || "",
+              cpf: partner.cpf || "",
+              cep: partner.cep || "",
+              endereco: partner.address || "",
+              cidadeUf: partner.city_state || "",
+              estadoCivil: partner.marital_status || "",
+              naturalidadeCidade: partner.birthplace_city || "",
+              naturalidadeEstado: partner.birthplace_state || "",
+              documents: {
+                rg_url: rgDoc?.file_url || "",
+                rg_name: rgDoc?.file_name || "",
+                cnh_url: cnhDoc?.file_url || "",
+                cnh_name: cnhDoc?.file_name || "",
+              },
+            };
+          });
+
           setSocios(loadedSocios);
         }
 
-        // Load documents
-        const documents = formation.documents as any[] | null;
-        if (documents && documents.length > 0) {
+        // Load company documents
+        if (documents.length > 0) {
           const newCompanyDocuments: CompanyDocuments = {};
           documents.forEach((doc: any) => {
             if (doc.document_type === "iptu_capa") {

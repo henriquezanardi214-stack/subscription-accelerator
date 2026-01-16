@@ -62,8 +62,8 @@ const Index = () => {
         return;
       }
 
-      // Check if user has a company_formation
-      const { data: formation } = await supabase
+      // Check if user has a company_formation (use the most recent one)
+      const { data: formation, error: formationError } = await supabase
         .from("company_formations")
         .select(`
           id,
@@ -76,7 +76,13 @@ const Index = () => {
           documents:documents (*)
         `)
         .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
+
+      if (formationError) {
+        console.error("Error fetching company formation (Index resume):", formationError);
+      }
 
       if (formation) {
         const partners = formation.partners as { id: string }[] | null;
