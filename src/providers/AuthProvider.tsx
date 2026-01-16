@@ -17,6 +17,50 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const getAuthStorageKey = (): string | undefined => {
+  // supabase-js v2 exposes the storage key used for persistSession
+  return (supabase.auth as any)?.storageKey as string | undefined;
+};
+
+const extractSessionFromStorageValue = (value: any): Session | null => {
+  if (!value) return null;
+
+  // Different builds can wrap it differently; try a few common shapes.
+  const maybeSession = value.currentSession ?? value.session ?? value;
+
+  if (maybeSession?.access_token && maybeSession?.refresh_token && maybeSession?.user) {
+    return maybeSession as Session;
+  }
+
+  return null;
+};
+
+const readStoredSession = (): Session | null => {
+  try {
+    const key = getAuthStorageKey();
+    if (!key) return null;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return extractSessionFromStorageValue(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+};
+
+const isSessionLikelyValid = (s: Session | null): s is Session => {
+  if (!s?.user?.id) return false;
+
+  // expires_at is seconds since epoch.
+  if (typeof (s as any).expires_at === "number") {
+    const now = Math.floor(Date.now() / 1000);
+    // Give a small buffer so we don't keep obviously-expired sessions.
+    return (s as any).expires_at > now + 10;
+  }
+
+  // If we can't validate expiry, still treat it as "possibly valid".
+  return true;
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -35,6 +79,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!mounted) return;
+
+      // Some environments surface a transient network/CORS failure during refresh_token
+      // as an unexpected SIGNED_OUT. If a valid session is still persisted, keep it and
+      // let the UI continue instead of hard-bouncing the user to /login.
+      if (event === "SIGNED_OUT" && !nextSession) {
+        const stored = readStoredSession();
+        if (isSessionLikelyValid(stored)) {
+          console.warn(
+            "[auth] SIGNED_OUT received but a valid session is still in storage; ignoring (likely transient refresh/network failure)."
+          );
+          setSession(stored);
+          if (!initializedRef.current) initializedRef.current = true;
+          setIsLoading(false);
+          return;
+        }
+      }
 
       setSession(nextSession);
 
@@ -108,24 +168,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Prefer the in-memory session (set by onAuthStateChange).
     if (session?.user?.id) return session.user.id;
 
-    // Avoid hitting refresh_token immediately (can fail via network/CORS and cause unwanted sign-outs).
-    // First, retry reading the persisted session for a short window.
+    // Fast-path: read the persisted session directly (no network / no refresh_token call).
+    // This avoids "Failed to fetch" (CORS/rede) issues that can happen during refresh.
+    const stored = readStoredSession();
+    if (isSessionLikelyValid(stored)) {
+      setSession(stored);
+      return stored.user.id;
+    }
+
+    // Last resort: ask the auth client. If this triggers a refresh_token request and it
+    // fails due to network/CORS, we bubble the error so callers can soft-fail.
     const retryDelaysMs = [0, 120, 250, 500, 800];
     for (const delay of retryDelaysMs) {
       if (delay) await sleep(delay);
       const { data, error } = await supabase.auth.getSession();
       if (error) {
+        const msg = (error as any)?.message ?? String(error);
+        if (/failed to fetch|network|fetch/i.test(msg)) {
+          throw error;
+        }
         console.warn("[auth] getSession error (ensureUserId):", error);
         continue;
       }
       if (data.session?.user?.id) {
-        // Keep context in sync so route guards won't bounce.
         setSession(data.session);
         return data.session.user.id;
       }
     }
 
-    // If we get here, we truly don't have a session snapshot.
     throw new AuthRequiredError("AUTH_REQUIRED");
   }, [session, waitForHydration]);
 
