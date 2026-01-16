@@ -8,6 +8,7 @@ import { StepRegister } from "@/components/checkout/StepRegister";
 import { StepCompanyForm, Socio, CompanyDocuments, createEmptySocio } from "@/components/checkout/StepCompanyForm";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useCompanyFormationSubmit } from "@/hooks/useCompanyFormationSubmit";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
@@ -22,8 +23,6 @@ const steps = [
 const Index = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-
-  // Auth context (session + refresh helpers)
   const auth = useAuth();
 
   const [isLoadingResume, setIsLoadingResume] = useState(true);
@@ -54,19 +53,21 @@ const Index = () => {
   const [hasEcpf, setHasEcpf] = useState(false);
   const [companyDocuments, setCompanyDocuments] = useState<CompanyDocuments>({});
 
+  // Hook for Step 5 submission
+  const { isSubmitting, createFormation } = useCompanyFormationSubmit({
+    onSessionExpired: () => setCurrentStep(4),
+  });
+
   // Check user session and load resume data
   useEffect(() => {
     const checkUserAndLoadData = async () => {
-      // Wait for auth hydration
       if (auth.isLoading) return;
 
-      // If not logged in, show step 1
       if (!auth.user) {
         setIsLoadingResume(false);
         return;
       }
 
-      // Check if user has a company_formation (use the most recent one)
       const { data: formation, error: formationError } = await supabase
         .from("company_formations")
         .select(`
@@ -91,16 +92,13 @@ const Index = () => {
       if (formation) {
         const partners = formation.partners as { id: string }[] | null;
 
-        // If partners exist, registration is complete - go to portal
         if (partners && partners.length > 0) {
           navigate("/acesso-portal");
           return;
         }
 
-        // User has formation but no partners - load data and go to step 5
         const lead = formation.leads as { name: string; email: string; phone: string } | null;
 
-        // Fetch qualification data
         const { data: qualification } = await supabase
           .from("qualifications")
           .select("*")
@@ -130,24 +128,17 @@ const Index = () => {
     checkUserAndLoadData();
   }, [auth.isLoading, auth.user, navigate]);
 
-  // Only skip registration step if user just completed it (from StepRegister's onNext)
-  // Do NOT auto-skip based on session alone - the registration step is intentional
-
   const handleLeadSubmit = async () => {
     setIsLoading(true);
     try {
-      // We generate the lead id client-side to avoid needing a SELECT right after INSERT.
-      // Returning representations requires SELECT permission, which is intentionally restricted by RLS.
       const newLeadId = crypto.randomUUID();
 
-      const { error } = await supabase
-        .from("leads")
-        .insert({
-          id: newLeadId,
-          name: leadData.nome,
-          email: leadData.email,
-          phone: leadData.telefone,
-        });
+      const { error } = await supabase.from("leads").insert({
+        id: newLeadId,
+        name: leadData.nome,
+        email: leadData.email,
+        phone: leadData.telefone,
+      });
 
       if (error) throw error;
 
@@ -252,12 +243,10 @@ const Index = () => {
       }
 
       if (leadId) {
-        // Use ensureUserId to get user ID safely (handles token rotation)
         let currentUserId: string | null = null;
         try {
           currentUserId = await auth.ensureUserId();
         } catch {
-          // User not authenticated yet - that's fine for payment step
           currentUserId = null;
         }
 
@@ -279,11 +268,12 @@ const Index = () => {
         }
       }
 
-      const successMessage = paymentData.paymentMethod === "CREDIT_CARD" 
-        ? "Sua assinatura foi criada com sucesso."
-        : paymentData.paymentMethod === "BOLETO"
-          ? "Boleto gerado! Verifique seu e-mail."
-          : "QR Code PIX gerado! Verifique seu e-mail.";
+      const successMessage =
+        paymentData.paymentMethod === "CREDIT_CARD"
+          ? "Sua assinatura foi criada com sucesso."
+          : paymentData.paymentMethod === "BOLETO"
+            ? "Boleto gerado! Verifique seu e-mail."
+            : "QR Code PIX gerado! Verifique seu e-mail.";
 
       toast({
         title: paymentData.paymentMethod === "CREDIT_CARD" ? "Pagamento aprovado!" : "Cobrança criada!",
@@ -307,165 +297,23 @@ const Index = () => {
     setCurrentStep(5);
   };
 
+  /**
+   * Step 5 submit handler - uses the extracted hook.
+   * hasEcpfFromForm comes from the form (user's selection at submit time).
+   */
   const handleSubmit = async (hasEcpfFromForm: boolean) => {
     if (!leadId) return;
 
-    setIsLoading(true);
-    try {
-      // Fluxo simplificado: se o usuário não está autenticado, volte para a etapa 4 (login/cadastro)
-      if (!auth.user) {
-        toast({
-          title: "Sessão expirada",
-          description: "Faça login novamente para concluir o cadastro.",
-          variant: "destructive",
-        });
-        setCurrentStep(4);
-        return;
-      }
-
-      let userId: string;
-      try {
-        // Garante sessão válida (tenta refresh se necessário) antes de fazer operações no backend
-        userId = await auth.ensureUserId();
-      } catch (err) {
-        console.error("User not authenticated (submit step 5):", err);
-
-        const detail = err instanceof Error ? err.message : String(err);
-        const isNetwork = /failed to fetch|network|fetch/i.test(detail);
-
-        // Não derruba a sessão em erros transitórios de rede/CORS no refresh_token.
-        if (isNetwork) {
-          toast({
-            title: "Conexão instável",
-            description:
-              "Não foi possível validar sua sessão agora. Verifique sua internet e tente novamente.",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        toast({
-          title: "Sessão expirada",
-          description: "Faça login novamente para concluir o cadastro.",
-          variant: "destructive",
-        });
-        setCurrentStep(4);
-        return;
-      }
-
-      // Generate IDs client-side to avoid needing SELECT after INSERT
-      const formationId = crypto.randomUUID();
-
-      // Create company formation record
-      const { error: formationError } = await supabase
-        .from("company_formations")
-        .insert({
-          id: formationId,
-          lead_id: leadId,
-          iptu: iptu,
-          has_ecpf: hasEcpf,
-          ecpf_certificate_url: companyDocuments.ecpf_url || null,
-          user_id: userId,
-        });
-
-      if (formationError) {
-        console.error("Formation error:", formationError);
-        throw formationError;
-      }
-
-      // Generate partner IDs client-side
-      const partnersToInsert = socios.map((socio) => ({
-        id: crypto.randomUUID(),
-        company_formation_id: formationId,
-        name: socio.nome,
-        rg: socio.rg,
-        cpf: socio.cpf.replace(/\D/g, ""),
-        cep: socio.cep.replace(/\D/g, ""),
-        address: socio.endereco,
-        city_state: socio.cidadeUf,
-        marital_status: socio.estadoCivil,
-        birthplace_city: socio.naturalidadeCidade,
-        birthplace_state: socio.naturalidadeEstado,
-      }));
-
-      const { error: partnersError } = await supabase
-        .from("partners")
-        .insert(partnersToInsert);
-
-      if (partnersError) throw partnersError;
-
-      // Save company documents
-      const documentsToInsert = [];
-
-      if (companyDocuments.iptu_url) {
-        documentsToInsert.push({
-          company_formation_id: formationId,
-          document_type: "iptu_capa",
-          file_name: companyDocuments.iptu_name || "iptu",
-          file_url: companyDocuments.iptu_url,
-        });
-      }
-
-      if (companyDocuments.avcb_url) {
-        documentsToInsert.push({
-          company_formation_id: formationId,
-          document_type: "avcb",
-          file_name: companyDocuments.avcb_name || "avcb",
-          file_url: companyDocuments.avcb_url,
-        });
-      }
-
-      // Save partner documents using the generated partner IDs
-      for (let i = 0; i < socios.length; i++) {
-        const socio = socios[i];
-        const partnerId = partnersToInsert[i].id;
-
-        if (socio.documents.rg_url) {
-          documentsToInsert.push({
-            company_formation_id: formationId,
-            partner_id: partnerId,
-            document_type: "rg",
-            file_name: socio.documents.rg_name || "rg",
-            file_url: socio.documents.rg_url,
-          });
-        }
-
-        if (socio.documents.cnh_url) {
-          documentsToInsert.push({
-            company_formation_id: formationId,
-            partner_id: partnerId,
-            document_type: "cnh",
-            file_name: socio.documents.cnh_name || "cnh",
-            file_url: socio.documents.cnh_url,
-          });
-        }
-      }
-
-      if (documentsToInsert.length > 0) {
-        const { error: docsError } = await supabase
-          .from("documents")
-          .insert(documentsToInsert);
-
-        if (docsError) {
-          console.error("Error saving documents:", docsError);
-        }
-      }
-
-      if (hasEcpfFromForm) {
-        navigate("/acesso-portal");
-      } else {
-        navigate("/biometria");
-      }
-    } catch (error) {
-      console.error("Error saving company data:", error);
-      toast({
-        title: "Erro ao salvar dados",
-        description: "Tente novamente mais tarde.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    await createFormation(
+      {
+        leadId,
+        socios,
+        iptu,
+        hasEcpf,
+        companyDocuments,
+      },
+      hasEcpfFromForm
+    );
   };
 
   if (isLoadingResume) {
@@ -481,12 +329,8 @@ const Index = () => {
       <div className="container max-w-5xl py-8 px-4">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-2">
-            Abra sua empresa
-          </h1>
-          <p className="text-muted-foreground">
-            Complete o cadastro para começar
-          </p>
+          <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-2">Abra sua empresa</h1>
+          <p className="text-muted-foreground">Complete o cadastro para começar</p>
         </div>
 
         {/* Stepper */}
@@ -527,9 +371,8 @@ const Index = () => {
             {currentStep === 4 && (
               <StepRegister
                 email={leadData.email}
-                onBack={handleBack}
                 onNext={handleRegisterNext}
-                isLoading={isLoading}
+                onBack={handleBack}
               />
             )}
 
@@ -545,7 +388,7 @@ const Index = () => {
                 onUpdateCompanyDocuments={setCompanyDocuments}
                 onBack={handleBack}
                 onSubmit={handleSubmit}
-                isLoading={isLoading || auth.isLoading}
+                isLoading={isSubmitting || isLoading}
               />
             )}
           </div>
