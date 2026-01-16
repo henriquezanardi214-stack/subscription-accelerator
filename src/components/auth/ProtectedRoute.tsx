@@ -1,72 +1,52 @@
-import React, { useEffect, useRef, useState } from "react";
-import { useLocation, Navigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { pushAuthLog } from "@/components/debug/AuthDebugPanel";
-
-function isTransientAuthNetworkError(err: unknown) {
-  const msg = err instanceof Error ? err.message : String(err);
-  return /failed to fetch|network|fetch/i.test(msg);
-}
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading, ensureUserId } = useAuth();
   const location = useLocation();
-
-  const attemptedRef = useRef(false);
-  const [rehydrating, setRehydrating] = useState(false);
-  const [allow, setAllow] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [allowed, setAllowed] = useState(false);
 
   useEffect(() => {
-    pushAuthLog("info", "ProtectedRoute", `Effect run`, { path: location.pathname, hasUser: !!user, isLoading });
-
-    // Reset allow if user is present (fresh login/logout cycles)
+    // If user is present, allow immediately
     if (user) {
-      pushAuthLog("decision", "ProtectedRoute", "User present, allowing", { userId: user.id });
-      setAllow(true);
-      attemptedRef.current = false;
+      setAllowed(true);
+      setChecking(false);
       return;
     }
 
-    setAllow(false);
-
+    // Still loading auth state
     if (isLoading) {
-      pushAuthLog("info", "ProtectedRoute", "Still loading, waiting...");
       return;
     }
-    if (attemptedRef.current) return;
 
-    attemptedRef.current = true;
-    setRehydrating(true);
-
+    // No user after loading, try ensureUserId
+    let mounted = true;
     (async () => {
       try {
-        pushAuthLog("info", "ProtectedRoute", "Calling ensureUserId()...");
-        const userId = await ensureUserId();
-        pushAuthLog("decision", "ProtectedRoute", "ensureUserId() succeeded", { userId });
-        setAllow(true);
-      } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        pushAuthLog("error", "ProtectedRoute", `ensureUserId() failed: ${detail}`);
-
-        // If this is a transient network/CORS failure on refresh_token,
-        // we do NOT want to hard-bounce the user to /login.
-        if (isTransientAuthNetworkError(err)) {
-          pushAuthLog("decision", "ProtectedRoute", "Transient network error, allowing anyway");
-          console.warn("[auth] transient auth network error during route guard:", err);
-          setAllow(true);
-          return;
+        await ensureUserId();
+        if (mounted) {
+          setAllowed(true);
         }
-
-        pushAuthLog("decision", "ProtectedRoute", "Auth required, denying access");
-        setAllow(false);
+      } catch {
+        if (mounted) {
+          setAllowed(false);
+        }
       } finally {
-        setRehydrating(false);
+        if (mounted) {
+          setChecking(false);
+        }
       }
     })();
-  }, [ensureUserId, isLoading, user, location.pathname]);
 
-  if (isLoading || rehydrating) {
+    return () => {
+      mounted = false;
+    };
+  }, [user, isLoading, ensureUserId]);
+
+  if (isLoading || checking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -74,11 +54,9 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user && !allow) {
-    pushAuthLog("decision", "ProtectedRoute", "Redirecting to /login", { from: location.pathname });
+  if (!user && !allowed) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
   return <>{children}</>;
 }
-

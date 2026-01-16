@@ -1,91 +1,83 @@
 import type { Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+
+const STORAGE_KEY_PATTERN = /^sb-.*-auth-token$/;
 
 /**
- * Tries to resolve the localStorage key used by the auth client.
- *
- * Why: depending on build/runtime, `supabase.auth.storageKey` might be undefined.
- * When that happens, reading the session from storage fails and the app is forced
- * to hit the network (which is exactly what we want to avoid in intermittent cases).
+ * Resolve the localStorage key used by Supabase auth.
+ * Works even when `supabase.auth.storageKey` is undefined at runtime.
  */
 export function resolveAuthStorageKey(): string | null {
-  const explicit = (supabase.auth as any)?.storageKey;
-  if (typeof explicit === "string" && explicit.length > 0) return explicit;
+  // Try using VITE env variable (project id)
+  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID as string | undefined;
+  if (projectId) {
+    return `sb-${projectId}-auth-token`;
+  }
 
-  const projectId = (import.meta as any)?.env?.VITE_SUPABASE_PROJECT_ID as string | undefined;
-  if (projectId) return `sb-${projectId}-auth-token`;
-
-  // Last resort: scan storage for the known pattern.
+  // Fallback: scan localStorage for known pattern
   try {
     for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && /^sb-.*-auth-token$/.test(k)) return k;
+      const key = localStorage.key(i);
+      if (key && STORAGE_KEY_PATTERN.test(key)) {
+        return key;
+      }
     }
   } catch {
-    // ignore
+    // localStorage not available
   }
 
   return null;
 }
 
-export function extractSessionFromStorageValue(value: any): Session | null {
-  if (!value) return null;
-  const maybeSession = value.currentSession ?? value.session ?? value;
-  if (maybeSession?.access_token && maybeSession?.refresh_token && maybeSession?.user) {
-    return maybeSession as Session;
+/**
+ * Extract session object from storage value (handles different shapes).
+ */
+function extractSession(value: unknown): Session | null {
+  if (!value || typeof value !== "object") return null;
+
+  const v = value as Record<string, unknown>;
+  const candidate = v.currentSession ?? v.session ?? v;
+
+  if (
+    candidate &&
+    typeof candidate === "object" &&
+    "access_token" in candidate &&
+    "refresh_token" in candidate &&
+    "user" in candidate
+  ) {
+    return candidate as Session;
   }
+
   return null;
 }
 
-export function readAuthStorageRaw(): { key: string | null; value: unknown } {
+/**
+ * Read the current session from localStorage (no network call).
+ */
+export function readStoredSession(): Session | null {
   try {
     const key = resolveAuthStorageKey();
-    if (!key) return { key: null, value: null };
+    if (!key) return null;
+
     const raw = localStorage.getItem(key);
-    return { key, value: raw ? JSON.parse(raw) : null };
-  } catch {
-    return { key: null, value: null };
-  }
-}
-
-export function readStoredSession(): Session | null {
-  const { value } = readAuthStorageRaw();
-  return extractSessionFromStorageValue(value);
-}
-
-function backupKeyFor(baseKey: string | null): string {
-  return baseKey ? `${baseKey}__backup_v1` : "sb-auth-token__backup_v1";
-}
-
-export function writeSessionBackup(session: Session): void {
-  try {
-    const baseKey = resolveAuthStorageKey();
-    const backupKey = backupKeyFor(baseKey);
-    localStorage.setItem(backupKey, JSON.stringify({ session, ts: Date.now() }));
-  } catch {
-    // ignore
-  }
-}
-
-export function readSessionBackup(): Session | null {
-  try {
-    const baseKey = resolveAuthStorageKey();
-    const backupKey = backupKeyFor(baseKey);
-    const raw = localStorage.getItem(backupKey);
     if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return extractSessionFromStorageValue(parsed?.session ?? parsed);
+
+    return extractSession(JSON.parse(raw));
   } catch {
     return null;
   }
 }
 
-export function clearSessionBackup(): void {
-  try {
-    const baseKey = resolveAuthStorageKey();
-    const backupKey = backupKeyFor(baseKey);
-    localStorage.removeItem(backupKey);
-  } catch {
-    // ignore
+/**
+ * Check if a session is likely still valid (not expired).
+ */
+export function isSessionValid(session: Session | null): session is Session {
+  if (!session?.user?.id) return false;
+
+  const expiresAt = (session as { expires_at?: number }).expires_at;
+  if (typeof expiresAt === "number") {
+    const now = Math.floor(Date.now() / 1000);
+    return expiresAt > now + 30; // 30s buffer
   }
+
+  return true;
 }

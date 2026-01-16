@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/providers/AuthProvider";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { AuthDebugPanel } from "@/components/debug/AuthDebugPanel";
 
 import Index from "./pages/Index";
 import Disqualified from "./pages/Disqualified";
@@ -62,11 +61,8 @@ const App = () => (
               <Route path="payments" element={<Payments />} />
               <Route path="documents" element={<Documents />} />
             </Route>
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-          {/* Debug panel - toggle via bug icon at bottom-right */}
-          <AuthDebugPanel />
         </BrowserRouter>
       </AuthProvider>
     </TooltipProvider>
