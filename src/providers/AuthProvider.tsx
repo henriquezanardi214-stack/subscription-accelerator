@@ -80,14 +80,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!mounted) return;
 
-      // Some environments surface a transient network/CORS failure during refresh_token
-      // as an unexpected SIGNED_OUT. If a valid session is still persisted, keep it and
-      // let the UI continue instead of hard-bouncing the user to /login.
-      if (event === "SIGNED_OUT" && !nextSession) {
+      // If hydration produced no session (or an unexpected SIGNED_OUT), but a valid session is
+      // still in storage, keep it. This shields the UI from transient refresh_token failures.
+      if (!nextSession && (event === "INITIAL_SESSION" || event === "SIGNED_OUT")) {
         const stored = readStoredSession();
         if (isSessionLikelyValid(stored)) {
           console.warn(
-            "[auth] SIGNED_OUT received but a valid session is still in storage; ignoring (likely transient refresh/network failure)."
+            `[auth] ${event} with null session, but storage still has a valid session; keeping it (likely transient network/CORS on refresh_token).`
           );
           setSession(stored);
           if (!initializedRef.current) initializedRef.current = true;
@@ -117,18 +116,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Safety net: if INITIAL_SESSION event doesn't fire for any reason.
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!mounted) return;
-      if (error) {
-        console.error("[auth] getSession error:", error);
-      }
-      setSession(data.session);
+    // Safety net: do NOT eagerly call getSession() on mount if storage already has a valid session.
+    // Calling getSession() can trigger a refresh_token request which may fail due to network/CORS.
+    const storedOnBoot = readStoredSession();
+    if (isSessionLikelyValid(storedOnBoot)) {
+      setSession(storedOnBoot);
       if (!initializedRef.current) {
         initializedRef.current = true;
         setIsLoading(false);
       }
-    });
+    } else {
+      // Only then ask the auth client.
+      supabase.auth.getSession().then(({ data, error }) => {
+        if (!mounted) return;
+
+        if (error) {
+          console.warn("[auth] getSession error (boot safety net):", error);
+        } else {
+          setSession(data.session);
+        }
+
+        if (!initializedRef.current) {
+          initializedRef.current = true;
+          setIsLoading(false);
+        }
+      });
+    }
 
     return () => {
       mounted = false;

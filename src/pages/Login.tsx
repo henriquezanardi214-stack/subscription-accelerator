@@ -35,7 +35,6 @@ const Login = () => {
   }, []);
 
   const [hasCompletedRegistration, setHasCompletedRegistration] = useState(false);
-  const [formationId, setFormationId] = useState<string | null>(null);
 
   const checkUserProgress = async (userId: string) => {
     try {
@@ -50,7 +49,6 @@ const Login = () => {
         .maybeSingle();
 
       if (formation) {
-        setFormationId(formation.id);
         // If there are partners, registration is complete
         const partners = formation.partners as { id: string }[] | null;
         if (partners && partners.length > 0) {
@@ -89,7 +87,7 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -104,10 +102,25 @@ const Login = () => {
       return;
     }
 
+    // Ensure session is actually established before navigating to a protected route.
+    const session = data.session ?? (await supabase.auth.getSession()).data.session;
+    if (!session?.user) {
+      toast({
+        title: "Erro ao entrar",
+        description: "Não foi possível validar sua sessão agora. Tente novamente.",
+        variant: "destructive",
+      });
+      setLoading(false);
+      return;
+    }
+
     toast({
       title: "Login realizado!",
       description: "Redirecionando...",
     });
+
+    // Small delay so AuthProvider/route guard can hydrate without racing.
+    await new Promise((r) => setTimeout(r, 250));
 
     // Redirect logged in users to portal access page
     navigate("/acesso-portal");
@@ -127,7 +140,7 @@ const Login = () => {
 
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
