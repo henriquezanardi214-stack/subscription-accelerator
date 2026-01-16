@@ -3,6 +3,15 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { AuthRequiredError } from "@/lib/auth";
 
+// Debug logging helper (lazy import to avoid circular deps)
+let pushAuthLog: ((type: string, source: string, message: string, data?: unknown) => void) | null = null;
+import("@/components/debug/AuthDebugPanel").then((m) => {
+  pushAuthLog = m.pushAuthLog;
+}).catch(() => {});
+const log = (type: "event" | "storage" | "decision" | "error" | "info", source: string, msg: string, data?: unknown) => {
+  pushAuthLog?.(type, source, msg, data);
+};
+
 type AuthContextValue = {
   session: Session | null;
   user: User | null;
@@ -80,11 +89,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!mounted) return;
 
+      log("event", "onAuthStateChange", event, { userId: nextSession?.user?.id, expiresAt: (nextSession as any)?.expires_at });
+
       // If hydration produced no session (or an unexpected SIGNED_OUT), but a valid session is
       // still in storage, keep it. This shields the UI from transient refresh_token failures.
       if (!nextSession && (event === "INITIAL_SESSION" || event === "SIGNED_OUT")) {
         const stored = readStoredSession();
         if (isSessionLikelyValid(stored)) {
+          log("decision", "AuthProvider", "Keeping storage session (transient failure)", { userId: stored.user.id });
           console.warn(
             `[auth] ${event} with null session, but storage still has a valid session; keeping it (likely transient network/CORS on refresh_token).`
           );
@@ -107,6 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!initializedRef.current && shouldInitialize) {
         initializedRef.current = true;
         setIsLoading(false);
+        log("decision", "AuthProvider", "Initialized", { event, hasSession: !!nextSession });
         return;
       }
 
