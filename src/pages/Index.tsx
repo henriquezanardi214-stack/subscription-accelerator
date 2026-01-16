@@ -304,7 +304,7 @@ const Index = () => {
     try {
       let userId: string;
       try {
-        userId = await requireUserId();
+        userId = await ensureUserId();
       } catch (err) {
         console.error("User not authenticated (submit step 5):", err);
         console.info("[auth] redirecting to /login from step 5", {
@@ -335,6 +335,7 @@ const Index = () => {
           ecpf_certificate_url: companyDocuments.ecpf_url || null,
           user_id: userId,
         });
+
 
       if (formationError) {
         console.error("Formation error:", formationError);
