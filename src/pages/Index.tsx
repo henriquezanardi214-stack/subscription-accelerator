@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Stepper } from "@/components/checkout/Stepper";
 import { StepLead } from "@/components/checkout/StepLead";
 import { StepQualification } from "@/components/checkout/StepQualification";
@@ -7,7 +7,7 @@ import { StepPayment, plans, PaymentData } from "@/components/checkout/StepPayme
 import { StepRegister } from "@/components/checkout/StepRegister";
 import { StepCompanyForm, Socio, CompanyDocuments, createEmptySocio } from "@/components/checkout/StepCompanyForm";
 import { supabase } from "@/integrations/supabase/client";
-import { requireUserId } from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
@@ -21,8 +21,9 @@ const steps = [
 
 const Index = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  
   const { toast } = useToast();
+  const { user, isLoading: authLoading, ensureUserId } = useAuth();
   const [isLoadingResume, setIsLoadingResume] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
   const [leadId, setLeadId] = useState<string | null>(null);
@@ -54,10 +55,11 @@ const Index = () => {
   // Check user session and load resume data
   useEffect(() => {
     const checkUserAndLoadData = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
+      // Wait for auth hydration
+      if (authLoading) return;
+
       // If not logged in, show step 1
-      if (!session?.user) {
+      if (!user) {
         setIsLoadingResume(false);
         return;
       }
@@ -75,7 +77,7 @@ const Index = () => {
           partners (*),
           documents:documents (*)
         `)
-        .eq("user_id", session.user.id)
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -86,7 +88,7 @@ const Index = () => {
 
       if (formation) {
         const partners = formation.partners as { id: string }[] | null;
-        
+
         // If partners exist, registration is complete - go to portal
         if (partners && partners.length > 0) {
           navigate("/acesso-portal");
@@ -124,7 +126,7 @@ const Index = () => {
     };
 
     checkUserAndLoadData();
-  }, [navigate]);
+  }, [authLoading, navigate, user]);
 
   // Only skip registration step if user just completed it (from StepRegister's onNext)
   // Do NOT auto-skip based on session alone - the registration step is intentional
@@ -514,7 +516,7 @@ const Index = () => {
                 onUpdateCompanyDocuments={setCompanyDocuments}
                 onBack={handleBack}
                 onSubmit={handleSubmit}
-                isLoading={isLoading}
+                isLoading={isLoading || authLoading}
               />
             )}
           </div>
