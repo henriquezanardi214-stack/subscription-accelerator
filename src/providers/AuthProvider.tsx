@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { AuthRequiredError } from "@/lib/auth";
+import { readSessionBackup, readStoredSession, writeSessionBackup } from "@/lib/authStorage";
 
 // Debug logging helper (lazy import to avoid circular deps)
 let pushAuthLog: ((type: string, source: string, message: string, data?: unknown) => void) | null = null;
@@ -26,34 +27,9 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const getAuthStorageKey = (): string | undefined => {
-  // supabase-js v2 exposes the storage key used for persistSession
-  return (supabase.auth as any)?.storageKey as string | undefined;
-};
-
-const extractSessionFromStorageValue = (value: any): Session | null => {
-  if (!value) return null;
-
-  // Different builds can wrap it differently; try a few common shapes.
-  const maybeSession = value.currentSession ?? value.session ?? value;
-
-  if (maybeSession?.access_token && maybeSession?.refresh_token && maybeSession?.user) {
-    return maybeSession as Session;
-  }
-
-  return null;
-};
-
-const readStoredSession = (): Session | null => {
-  try {
-    const key = getAuthStorageKey();
-    if (!key) return null;
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return extractSessionFromStorageValue(JSON.parse(raw));
-  } catch {
-    return null;
-  }
+const isTransientAuthNetworkError = (err: unknown) => {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /failed to fetch|network|fetch/i.test(msg);
 };
 
 const isSessionLikelyValid = (s: Session | null): s is Session => {
@@ -80,27 +56,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    // We manage refresh explicitly (via ensureUserId/refresh). Auto-refresh can race during
-    // initial hydration on some browsers/environments and briefly clear auth state.
-    (supabase.auth as any).stopAutoRefresh?.();
+    // Prefer letting the auth client auto-refresh in the background.
+    // The intermittent issues we saw were largely caused by not being able to read
+    // the stored session (storageKey resolution), forcing network refresh at the worst time.
+    (supabase.auth as any).startAutoRefresh?.();
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!mounted) return;
 
-      log("event", "onAuthStateChange", event, { userId: nextSession?.user?.id, expiresAt: (nextSession as any)?.expires_at });
+      log("event", "onAuthStateChange", event, {
+        userId: nextSession?.user?.id,
+        expiresAt: (nextSession as any)?.expires_at,
+      });
 
-      // If hydration produced no session (or an unexpected SIGNED_OUT), but a valid session is
-      // still in storage, keep it. This shields the UI from transient refresh_token failures.
+      if (nextSession) {
+        writeSessionBackup(nextSession);
+      }
+
+      // If hydration produced no session (or an unexpected SIGNED_OUT), try to recover.
       if (!nextSession && (event === "INITIAL_SESSION" || event === "SIGNED_OUT")) {
         const stored = readStoredSession();
+        log("storage", "AuthProvider", "Read supabase storage session", {
+          hasSession: !!stored,
+          userId: stored?.user?.id,
+          expiresAt: (stored as any)?.expires_at,
+        });
+
         if (isSessionLikelyValid(stored)) {
-          log("decision", "AuthProvider", "Keeping storage session (transient failure)", { userId: stored.user.id });
-          console.warn(
-            `[auth] ${event} with null session, but storage still has a valid session; keeping it (likely transient network/CORS on refresh_token).`
-          );
+          log("decision", "AuthProvider", "Keeping storage session", { userId: stored.user.id });
           setSession(stored);
+          if (!initializedRef.current) initializedRef.current = true;
+          setIsLoading(false);
+          return;
+        }
+
+        // Fallback: if the auth client cleared its own key, recover from backup.
+        const backup = readSessionBackup();
+        log("storage", "AuthProvider", "Read backup session", {
+          hasSession: !!backup,
+          userId: backup?.user?.id,
+          expiresAt: (backup as any)?.expires_at,
+        });
+
+        if (isSessionLikelyValid(backup)) {
+          log("decision", "AuthProvider", "Restored session from backup", { userId: backup.user.id });
+          setSession(backup);
           if (!initializedRef.current) initializedRef.current = true;
           setIsLoading(false);
           return;
@@ -129,23 +131,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Safety net: do NOT eagerly call getSession() on mount if storage already has a valid session.
-    // Calling getSession() can trigger a refresh_token request which may fail due to network/CORS.
+    // Boot: prefer storage read, then fall back to getSession.
     const storedOnBoot = readStoredSession();
+    log("storage", "AuthProvider", "Boot storage read", {
+      hasSession: !!storedOnBoot,
+      userId: storedOnBoot?.user?.id,
+      expiresAt: (storedOnBoot as any)?.expires_at,
+    });
+
     if (isSessionLikelyValid(storedOnBoot)) {
       setSession(storedOnBoot);
+      writeSessionBackup(storedOnBoot);
       if (!initializedRef.current) {
         initializedRef.current = true;
         setIsLoading(false);
       }
     } else {
-      // Only then ask the auth client.
       supabase.auth.getSession().then(({ data, error }) => {
         if (!mounted) return;
 
         if (error) {
-          console.warn("[auth] getSession error (boot safety net):", error);
-        } else {
+          log("error", "AuthProvider", "getSession error (boot)", {
+            message: (error as any)?.message ?? String(error),
+          });
+        } else if (data.session) {
+          writeSessionBackup(data.session);
           setSession(data.session);
         }
 
@@ -165,11 +175,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async (): Promise<Session | null> => {
     if (!refreshInFlight.current) {
       refreshInFlight.current = (async () => {
+        log("info", "AuthProvider", "refreshSession() called");
+
         const { data, error } = await supabase.auth.refreshSession();
         if (error) {
-          console.warn("[auth] refreshSession error:", error);
+          log("error", "AuthProvider", "refreshSession() error", {
+            message: (error as any)?.message ?? String(error),
+          });
           return null;
         }
+
+        if (data.session) {
+          writeSessionBackup(data.session);
+        }
+
         setSession(data.session);
         return data.session ?? null;
       })().finally(() => {
@@ -188,42 +207,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isLoading]);
 
   const ensureUserId = useCallback(async (): Promise<string> => {
-    // If the app just navigated, hydration can lag slightly; wait for the initial auth snapshot.
     await waitForHydration();
 
-    // Prefer the in-memory session (set by onAuthStateChange).
+    // Prefer in-memory session.
     if (session?.user?.id) return session.user.id;
 
-    // Fast-path: read the persisted session directly (no network / no refresh_token call).
-    // This avoids "Failed to fetch" (CORS/rede) issues that can happen during refresh.
+    // Prefer persisted session (no network).
     const stored = readStoredSession();
+    log("storage", "ensureUserId", "Read supabase storage session", {
+      hasSession: !!stored,
+      userId: stored?.user?.id,
+      expiresAt: (stored as any)?.expires_at,
+    });
+
     if (isSessionLikelyValid(stored)) {
       setSession(stored);
       return stored.user.id;
     }
 
-    // Last resort: ask the auth client. If this triggers a refresh_token request and it
-    // fails due to network/CORS, we bubble the error so callers can soft-fail.
+    // If we have a stored session but it's expired-ish, try a refresh first.
+    if (stored?.user?.id && stored?.refresh_token) {
+      log("decision", "ensureUserId", "Stored session not valid; attempting refreshSession()", {
+        userId: stored.user.id,
+        expiresAt: (stored as any)?.expires_at,
+      });
+
+      const retryDelaysMs = [0, 250, 500, 900];
+      for (const delay of retryDelaysMs) {
+        if (delay) await sleep(delay);
+        try {
+          const refreshed = await refresh();
+          if (refreshed?.user?.id) return refreshed.user.id;
+        } catch (err) {
+          if (isTransientAuthNetworkError(err)) throw err;
+        }
+      }
+    }
+
+    // Fallback: backup session.
+    const backup = readSessionBackup();
+    log("storage", "ensureUserId", "Read backup session", {
+      hasSession: !!backup,
+      userId: backup?.user?.id,
+      expiresAt: (backup as any)?.expires_at,
+    });
+
+    if (isSessionLikelyValid(backup)) {
+      setSession(backup);
+      return backup.user.id;
+    }
+
+    // Last resort: ask the auth client (may hit network / refresh token).
     const retryDelaysMs = [0, 120, 250, 500, 800];
     for (const delay of retryDelaysMs) {
       if (delay) await sleep(delay);
       const { data, error } = await supabase.auth.getSession();
       if (error) {
-        const msg = (error as any)?.message ?? String(error);
-        if (/failed to fetch|network|fetch/i.test(msg)) {
+        if (isTransientAuthNetworkError(error)) {
+          log("error", "ensureUserId", "getSession transient error", {
+            message: (error as any)?.message ?? String(error),
+          });
           throw error;
         }
-        console.warn("[auth] getSession error (ensureUserId):", error);
+        log("error", "ensureUserId", "getSession error", {
+          message: (error as any)?.message ?? String(error),
+        });
         continue;
       }
+
       if (data.session?.user?.id) {
+        writeSessionBackup(data.session);
         setSession(data.session);
         return data.session.user.id;
       }
     }
 
     throw new AuthRequiredError("AUTH_REQUIRED");
-  }, [session, waitForHydration]);
+  }, [refresh, session, waitForHydration]);
 
   const value = useMemo<AuthContextValue>(() => {
     return {

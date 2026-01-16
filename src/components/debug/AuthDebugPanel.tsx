@@ -4,6 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { X, Bug, ChevronDown, ChevronUp, Trash2, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+
+
 type LogEntry = {
   id: string;
   timestamp: Date;
@@ -54,20 +56,12 @@ function useAuthLogs() {
 }
 
 // Storage key helper
-const getAuthStorageKey = (): string | undefined => {
-  return (supabase.auth as any)?.storageKey as string | undefined;
-};
+import { readAuthStorageRaw, readSessionBackup } from "@/lib/authStorage";
 
 const readStorageRaw = (): { key: string | null; value: unknown } => {
-  try {
-    const key = getAuthStorageKey() ?? null;
-    if (!key) return { key: null, value: null };
-    const raw = localStorage.getItem(key);
-    return { key, value: raw ? JSON.parse(raw) : null };
-  } catch {
-    return { key: null, value: null };
-  }
+  return readAuthStorageRaw();
 };
+
 
 export function AuthDebugPanel() {
   const [open, setOpen] = useState(false);
@@ -96,6 +90,8 @@ export function AuthDebugPanel() {
     if (open) {
       const { key, value } = readStorageRaw();
       const session = (value as any)?.currentSession ?? (value as any)?.session ?? value;
+      const backup = readSessionBackup();
+
       pushAuthLog(
         "storage",
         "localStorage",
@@ -104,10 +100,14 @@ export function AuthDebugPanel() {
           hasSession: !!session,
           userId: session?.user?.id,
           expiresAt: session?.expires_at,
+          hasBackup: !!backup,
+          backupUserId: backup?.user?.id,
+          backupExpiresAt: (backup as any)?.expires_at,
         }
       );
     }
   }, [open]);
+
 
   const clearLogs = useCallback(() => {
     globalLogs.length = 0;

@@ -134,6 +134,9 @@ const AcessoPortal = () => {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
+    const { clearSessionBackup } = await import("@/lib/authStorage");
+    clearSessionBackup();
+
     await supabase.auth.signOut();
     toast.success("Logout realizado com sucesso!");
     navigate("/login");
