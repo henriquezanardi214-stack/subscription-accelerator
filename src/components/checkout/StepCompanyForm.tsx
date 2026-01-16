@@ -55,7 +55,7 @@ interface StepCompanyFormProps {
   onUpdateHasEcpf: (hasEcpf: boolean) => void;
   onUpdateCompanyDocuments: (docs: CompanyDocuments) => void;
   onBack: () => void;
-  onSubmit: (needsBiometria: boolean) => void;
+  onSubmit: (hasEcpf: boolean) => void;
   isLoading?: boolean;
 }
 
@@ -238,7 +238,7 @@ export const StepCompanyForm = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validate()) {
-      onSubmit(!hasEcpf);
+      onSubmit(hasEcpf);
     }
   };
 
