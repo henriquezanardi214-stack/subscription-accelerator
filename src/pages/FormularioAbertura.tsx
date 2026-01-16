@@ -121,7 +121,8 @@ const FormularioAbertura = () => {
 
     setIsSubmitting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Garante sessão válida (tenta refresh se necessário) antes de fazer operações no backend
+      await requireUserId();
 
       // Update company formation record
       const { error: formationError } = await supabase
