@@ -144,6 +144,12 @@ const AcessoPortal = () => {
         setLoading(false);
       } catch (err) {
         console.error("User not authenticated (AcessoPortal):", err);
+        console.info("[auth] redirecting to /login from /acesso-portal", {
+          origin: window.location.origin,
+          path: window.location.pathname,
+        });
+        const detail = err instanceof Error ? err.message : String(err);
+        toast.error(`Sessão expirada. (${detail})`);
         navigate("/login");
       }
     };
