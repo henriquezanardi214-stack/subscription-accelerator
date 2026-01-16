@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { AuthRequiredError } from "@/lib/auth";
 import type { Socio, CompanyDocuments } from "@/components/checkout/StepCompanyForm";
 
 /** Error types for consistent handling */
@@ -49,16 +50,25 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
    * Classifies an error into a known type for consistent UI handling.
    */
   const classifyError = (error: unknown): SubmitErrorType => {
+    // Our own auth sentinel
+    if (error instanceof AuthRequiredError) {
+      return "session";
+    }
+
     const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+
     if (/failed to fetch|network|fetch|cors/i.test(message)) {
       return "network";
     }
-    if (/auth|session|expired|not authenticated/i.test(message)) {
+
+    if (/auth|session|expired|not authenticated|auth_required/i.test(message)) {
       return "session";
     }
+
     if (/database|rls|policy|insert|update|delete/i.test(message)) {
       return "database";
     }
+
     return "unknown";
   };
 
@@ -208,12 +218,9 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
       setIsSubmitting(true);
 
       try {
-        // Validate session
-        if (!auth.user) {
-          showErrorToast("session");
-          return { success: false, errorType: "session" };
-        }
-
+        // Validate (and hydrate) session via the provider helper.
+        // Do not rely on `auth.user` here, because it can be temporarily null while auth is hydrating,
+        // even though a valid session exists in storage.
         let userId: string;
         try {
           userId = await auth.ensureUserId();
