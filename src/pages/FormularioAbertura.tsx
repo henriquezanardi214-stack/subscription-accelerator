@@ -28,6 +28,16 @@ const FormularioAbertura = () => {
         userId = await requireUserId();
       } catch (err) {
         console.error("User not authenticated (FormularioAbertura):", err);
+        console.info("[auth] redirecting to /login from /formulario-abertura", {
+          origin: window.location.origin,
+          path: window.location.pathname,
+        });
+        const detail = err instanceof Error ? err.message : String(err);
+        toast({
+          title: "Sessão expirada",
+          description: `Faça login novamente. (${detail})`,
+          variant: "destructive",
+        });
         navigate("/login");
         return;
       }

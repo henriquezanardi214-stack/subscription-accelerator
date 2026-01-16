@@ -301,9 +301,14 @@ const Index = () => {
         userId = await requireUserId();
       } catch (err) {
         console.error("User not authenticated (submit step 5):", err);
+        console.info("[auth] redirecting to /login from step 5", {
+          origin: window.location.origin,
+          path: window.location.pathname,
+        });
+        const detail = err instanceof Error ? err.message : String(err);
         toast({
           title: "Sessão expirada",
-          description: "Por favor, faça login novamente.",
+          description: `Por favor, faça login novamente. (${detail})`,
           variant: "destructive",
         });
         navigate("/login");
