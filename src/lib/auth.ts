@@ -23,14 +23,16 @@ export async function requireUserId(): Promise<string> {
     return data.session?.user?.id ?? null;
   };
 
-  const userId1 = await readFromSession();
-  if (userId1) return userId1;
+  // Session hydration can lag behind route navigation (especially right after sign-in).
+  // We retry for ~1.5s before considering the user unauthenticated.
+  const retryDelaysMs = [0, 100, 200, 400, 800];
 
-  // Sometimes session hydration from storage lags a tick on navigation.
-  await new Promise((r) => setTimeout(r, 80));
+  for (const delay of retryDelaysMs) {
+    if (delay) await new Promise((r) => setTimeout(r, delay));
 
-  const userId2 = await readFromSession();
-  if (userId2) return userId2;
+    const userId = await readFromSession();
+    if (userId) return userId;
+  }
 
   throw new AuthRequiredError();
 }
