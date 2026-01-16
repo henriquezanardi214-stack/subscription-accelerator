@@ -32,7 +32,13 @@ const isTransientAuthNetworkError = (err: unknown) => {
   return /failed to fetch|network|fetch/i.test(msg);
 };
 
-const isSessionLikelyValid = (s: Session | null): s is Session => {
+/**
+ * NOTE: This must NOT be a TypeScript type-guard.
+ *
+ * We intentionally want to keep access to potentially-expired sessions (still shaped like Session)
+ * so we can attempt refresh flows without TS narrowing the value to `null`.
+ */
+const isSessionLikelyValid = (s: Session | null): boolean => {
   if (!s?.user?.id) return false;
 
   // expires_at is seconds since epoch.
@@ -84,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           expiresAt: (stored as any)?.expires_at,
         });
 
-        if (isSessionLikelyValid(stored)) {
+        if (stored && isSessionLikelyValid(stored)) {
           log("decision", "AuthProvider", "Keeping storage session", { userId: stored.user.id });
           setSession(stored);
           if (!initializedRef.current) initializedRef.current = true;
@@ -100,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           expiresAt: (backup as any)?.expires_at,
         });
 
-        if (isSessionLikelyValid(backup)) {
+        if (backup && isSessionLikelyValid(backup)) {
           log("decision", "AuthProvider", "Restored session from backup", { userId: backup.user.id });
           setSession(backup);
           if (!initializedRef.current) initializedRef.current = true;
@@ -139,7 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       expiresAt: (storedOnBoot as any)?.expires_at,
     });
 
-    if (isSessionLikelyValid(storedOnBoot)) {
+    if (storedOnBoot && isSessionLikelyValid(storedOnBoot)) {
       setSession(storedOnBoot);
       writeSessionBackup(storedOnBoot);
       if (!initializedRef.current) {
@@ -220,7 +226,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       expiresAt: (stored as any)?.expires_at,
     });
 
-    if (isSessionLikelyValid(stored)) {
+    if (stored && isSessionLikelyValid(stored)) {
       setSession(stored);
       return stored.user.id;
     }
@@ -252,7 +258,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       expiresAt: (backup as any)?.expires_at,
     });
 
-    if (isSessionLikelyValid(backup)) {
+    if (backup && isSessionLikelyValid(backup)) {
       setSession(backup);
       return backup.user.id;
     }
