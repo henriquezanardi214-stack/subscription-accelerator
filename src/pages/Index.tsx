@@ -312,8 +312,20 @@ const Index = () => {
 
     setIsLoading(true);
     try {
+      // Fluxo simplificado: se o usuário não está autenticado, volte para a etapa 4 (login/cadastro)
+      if (!auth.user) {
+        toast({
+          title: "Sessão expirada",
+          description: "Faça login novamente para concluir o cadastro.",
+          variant: "destructive",
+        });
+        setCurrentStep(4);
+        return;
+      }
+
       let userId: string;
       try {
+        // Garante sessão válida (tenta refresh se necessário) antes de fazer operações no backend
         userId = await auth.ensureUserId();
       } catch (err) {
         console.error("User not authenticated (submit step 5):", err);
@@ -325,23 +337,19 @@ const Index = () => {
         if (isNetwork) {
           toast({
             title: "Conexão instável",
-            description: "Não foi possível validar sua sessão agora. Verifique sua internet e tente novamente.",
+            description:
+              "Não foi possível validar sua sessão agora. Verifique sua internet e tente novamente.",
             variant: "destructive",
           });
           return;
         }
 
-        console.info("[auth] redirecting to /login from step 5", {
-          origin: window.location.origin,
-          path: window.location.pathname,
-        });
-
         toast({
           title: "Sessão expirada",
-          description: `Por favor, faça login novamente. (${detail})`,
+          description: "Faça login novamente para concluir o cadastro.",
           variant: "destructive",
         });
-        navigate("/login");
+        setCurrentStep(4);
         return;
       }
 
