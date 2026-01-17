@@ -46,6 +46,15 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
   const auth = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const isAuthTokenError = (err: unknown) => {
+    const e = err as { message?: string; status?: number; code?: string };
+    const msg = (e?.message || "").toLowerCase();
+    return (
+      e?.status === 401 ||
+      /jwt|token|not authenticated|auth/i.test(msg) && /expired|invalid|missing/i.test(msg)
+    );
+  };
+
   /**
    * Classifies an error into a known type for consistent UI handling.
    */
@@ -61,7 +70,7 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
       return "network";
     }
 
-    if (/auth|session|expired|not authenticated|auth_required/i.test(message)) {
+    if (/auth|session|expired|not authenticated|auth_required|jwt/i.test(message)) {
       return "session";
     }
 
@@ -233,28 +242,54 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
         // Generate formation ID client-side
         const formationId = crypto.randomUUID();
 
-        // Insert company formation
-        const { error: formationError } = await supabase.from("company_formations").insert({
+        // Insert company formation (retry once if token expired)
+        const formationPayload = {
           id: formationId,
           lead_id: leadId,
           iptu: iptu,
           has_ecpf: hasEcpf,
           ecpf_certificate_url: companyDocuments.ecpf_url || null,
           user_id: userId,
-        });
+        };
 
-        if (formationError) {
-          console.error("Formation error:", formationError);
-          throw formationError;
+        let formationError: unknown | null = null;
+        {
+          const res = await supabase.from("company_formations").insert(formationPayload);
+          formationError = res.error;
         }
 
-        // Insert partners
+        if (formationError) {
+          if (isAuthTokenError(formationError)) {
+            await supabase.auth.refreshSession();
+            const retry = await supabase.from("company_formations").insert(formationPayload);
+            formationError = retry.error;
+          }
+
+          if (formationError) {
+            console.error("Formation error:", formationError);
+            throw formationError;
+          }
+        }
+
+        // Insert partners (retry once if token expired)
         const partnersToInsert = buildPartnersPayload(formationId, socios);
-        const { error: partnersError } = await supabase.from("partners").insert(partnersToInsert);
+        let partnersError: unknown | null = null;
+        {
+          const res = await supabase.from("partners").insert(partnersToInsert);
+          partnersError = res.error;
+        }
 
         if (partnersError) {
-          console.error("Partners error:", partnersError);
-          throw partnersError;
+          if (isAuthTokenError(partnersError)) {
+            await supabase.auth.refreshSession();
+            const retry = await supabase.from("partners").insert(partnersToInsert);
+            partnersError = retry.error;
+          }
+
+          if (partnersError) {
+            console.error("Partners error:", partnersError);
+            throw partnersError;
+          }
         }
 
         // Insert documents

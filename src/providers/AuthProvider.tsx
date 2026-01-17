@@ -58,6 +58,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!newSession && (event === "INITIAL_SESSION" || event === "SIGNED_OUT")) {
         const stored = readStoredSession();
         if (isSessionValid(stored)) {
+          // IMPORTANT: also hydrate supabase-js internal auth state,
+          // otherwise database requests may still run unauthenticated.
+          void supabase.auth.setSession({
+            access_token: stored.access_token,
+            refresh_token: stored.refresh_token,
+          });
+
           setSession(stored);
           if (!initializedRef.current) {
             initializedRef.current = true;
@@ -78,6 +85,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Initial session check from storage (no network)
     const stored = readStoredSession();
     if (isSessionValid(stored)) {
+      // IMPORTANT: hydrate supabase-js internal auth state as well
+      void supabase.auth.setSession({
+        access_token: stored.access_token,
+        refresh_token: stored.refresh_token,
+      });
+
       setSession(stored);
       initializedRef.current = true;
       setIsLoading(false);
@@ -119,11 +132,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return inMemory.user.id;
     }
 
-    // Check storage
+    // Best-effort: ask supabase-js to refresh using whatever it has in storage.
+    // This updates the internal auth state used by database requests.
+    try {
+      const { data: refreshedAuto } = await supabase.auth.refreshSession();
+      if (refreshedAuto.session?.user?.id) {
+        setSession(refreshedAuto.session);
+        sessionRef.current = refreshedAuto.session;
+        return refreshedAuto.session.user.id;
+      }
+    } catch {
+      // ignore and continue to other strategies
+    }
+
+    // Check storage (no network)
     const stored = readStoredSession();
     const storedRefreshToken = stored?.refresh_token;
 
     if (isSessionValid(stored)) {
+      // Hydrate supabase-js so subsequent DB calls are authenticated
+      await supabase.auth.setSession({
+        access_token: stored.access_token,
+        refresh_token: stored.refresh_token,
+      });
+
       setSession(stored);
       sessionRef.current = stored;
       return stored.user.id;
