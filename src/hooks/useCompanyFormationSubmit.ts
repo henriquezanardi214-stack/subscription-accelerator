@@ -234,9 +234,23 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
         try {
           userId = await auth.ensureUserId();
         } catch (err) {
-          const errorType = classifyError(err);
-          showErrorToast(errorType);
-          return { success: false, errorType };
+          console.warn("[createFormation] ensureUserId failed, attempting fallback refresh:", err);
+          
+          // Fallback: try refreshing session directly
+          const { data: refreshed } = await supabase.auth.refreshSession();
+          if (refreshed.session?.user?.id) {
+            userId = refreshed.session.user.id;
+          } else {
+            // Last attempt: getSession
+            const { data: sessionData } = await supabase.auth.getSession();
+            if (sessionData.session?.user?.id) {
+              userId = sessionData.session.user.id;
+            } else {
+              const errorType = classifyError(err);
+              showErrorToast(errorType);
+              return { success: false, errorType };
+            }
+          }
         }
 
         // Generate formation ID client-side
