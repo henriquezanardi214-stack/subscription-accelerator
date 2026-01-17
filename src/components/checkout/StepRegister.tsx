@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, ArrowRight, Loader2, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 interface StepRegisterProps {
   email: string;
@@ -20,6 +21,7 @@ export const StepRegister = ({
   isLoading: externalLoading,
 }: StepRegisterProps) => {
   const { toast } = useToast();
+  const auth = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isLogin, setIsLogin] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -60,24 +62,22 @@ export const StepRegister = ({
     setIsLoading(true);
     try {
       if (isLogin) {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { error } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password,
         });
 
         if (error) throw error;
-        
-        // Verify session is established
-        if (!data.session) {
-          throw new Error("Sessão não foi criada. Tente novamente.");
-        }
+
+        // Confirma que a sessão foi persistida/hidratada antes de avançar
+        await auth.ensureUserId();
 
         toast({
           title: "Login realizado!",
           description: "Continue o cadastro da sua empresa.",
         });
       } else {
-        const { data, error } = await supabase.auth.signUp({
+        const { error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
           options: {
@@ -86,11 +86,9 @@ export const StepRegister = ({
         });
 
         if (error) throw error;
-        
-        // Verify session is established (auto-confirm should create session immediately)
-        if (!data.session) {
-          throw new Error("Sessão não foi criada. Tente novamente.");
-        }
+
+        // Com auto-confirmação habilitada, a sessão deve ficar disponível imediatamente
+        await auth.ensureUserId();
 
         toast({
           title: "Conta criada!",
@@ -98,9 +96,9 @@ export const StepRegister = ({
         });
       }
 
-      // Small delay to ensure session is fully propagated
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      // Pequeno delay para evitar corrida com a hidratação do AuthProvider
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
       onNext();
     } catch (error: unknown) {
       console.error("Auth error:", error);
