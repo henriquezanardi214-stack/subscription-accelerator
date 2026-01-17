@@ -322,8 +322,19 @@ const Index = () => {
    * Step 5 submit handler - uses the extracted hook.
    * hasEcpfFromForm comes from the form (user's selection at submit time).
    */
+  /**
+   * Step 5 submit handler - uses the extracted hook.
+   * hasEcpfFromForm comes from the form (user's selection at submit time).
+   */
   const handleSubmit = async (hasEcpfFromForm: boolean) => {
     if (!leadId) return;
+
+    // Pre-submission: ensure session is fresh by triggering a refresh
+    try {
+      await supabase.auth.refreshSession();
+    } catch (refreshErr) {
+      console.warn("[handleSubmit] Pre-submission refresh failed:", refreshErr);
+    }
 
     await createFormation(
       {
