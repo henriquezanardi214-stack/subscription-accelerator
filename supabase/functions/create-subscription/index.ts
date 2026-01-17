@@ -9,6 +9,7 @@ const corsHeaders = {
 const ASAAS_API_KEY = Deno.env.get('ASAAS_API_KEY');
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
 // Normalize environment to avoid issues like "Production" or "production "
 const ASAAS_ENVIRONMENT = (Deno.env.get('ASAAS_ENVIRONMENT') ?? '').trim().toLowerCase();
@@ -47,11 +48,13 @@ interface CreditCardHolderInfo {
 }
 
 interface SubscriptionRequest {
+  leadId: string;
   customer: CustomerData;
   billingType: BillingType;
   creditCard?: CreditCardData;
   creditCardHolderInfo?: CreditCardHolderInfo;
   planId: string;
+  planName?: string;
   planValue: number;
   remoteIp: string;
 }
@@ -199,10 +202,13 @@ interface ValidationResult {
 
 function validateRequest(data: SubscriptionRequest): ValidationResult {
   // Check required fields
+  if (!data.leadId) {
+    return { valid: false, error: 'Identificador do lead é obrigatório' };
+  }
   if (!data.customer) {
     return { valid: false, error: 'Dados do cliente são obrigatórios' };
   }
-  if (!data.planValue || !data.billingType) {
+  if (!data.planId || !data.planValue || !data.billingType) {
     return { valid: false, error: 'Dados do plano são obrigatórios' };
   }
   
@@ -428,6 +434,43 @@ serve(async (req) => {
       requestData.remoteIp
     );
 
+    // Persist on DB (server-side) so we don't depend on client session/timing
+    let dbSaved = false;
+    let dbError: string | null = null;
+
+    try {
+      if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+        throw new Error('Backend keys not configured');
+      }
+
+      const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+
+      const { error: insertError } = await admin.from('subscriptions').insert({
+        lead_id: requestData.leadId,
+        user_id: userId,
+        asaas_customer_id: customer.id,
+        asaas_subscription_id: subscription.id,
+        billing_type: requestData.billingType,
+        status: subscription.status ?? 'ACTIVE',
+        plan_value: requestData.planValue,
+        plan_name: requestData.planName ?? requestData.planId,
+        bank_slip_url: (subscription as any).bankSlipUrl ?? null,
+        pix_qr_code_url: (subscription as any).pixQrCodeUrl ?? null,
+      });
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      dbSaved = true;
+    } catch (e: unknown) {
+      dbSaved = false;
+      dbError = e instanceof Error ? e.message : 'unknown';
+      console.error('[create-subscription] failed to persist subscription:', dbError);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -436,9 +479,11 @@ serve(async (req) => {
         status: subscription.status,
         billingType: requestData.billingType,
         userId: userId, // Return user ID for client to use
+        dbSaved,
+        dbError,
         // Include payment info for boleto/pix
-        ...(requestData.billingType === 'BOLETO' && subscription.bankSlipUrl && { bankSlipUrl: subscription.bankSlipUrl }),
-        ...(requestData.billingType === 'PIX' && subscription.pixQrCodeUrl && { pixQrCodeUrl: subscription.pixQrCodeUrl }),
+        ...(requestData.billingType === 'BOLETO' && (subscription as any).bankSlipUrl && { bankSlipUrl: (subscription as any).bankSlipUrl }),
+        ...(requestData.billingType === 'PIX' && (subscription as any).pixQrCodeUrl && { pixQrCodeUrl: (subscription as any).pixQrCodeUrl }),
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
