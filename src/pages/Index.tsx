@@ -197,8 +197,11 @@ const Index = () => {
     try {
       const selectedPlanData = plans.find((p) => p.id === selectedPlan);
       if (!selectedPlanData) throw new Error("Plano não selecionado");
+      if (!leadId) throw new Error("Não foi possível identificar seu cadastro. Volte um passo e tente novamente.");
 
       const requestBody: Record<string, unknown> = {
+        leadId,
+        planName: selectedPlanData.name,
         customer: {
           name: leadData.nome,
           email: leadData.email,
@@ -242,7 +245,11 @@ const Index = () => {
         throw new Error(data.error || "Erro ao processar pagamento");
       }
 
-      if (leadId) {
+      // Fallback (legado): se por algum motivo o backend não conseguiu persistir,
+      // tentamos salvar do cliente quando já houver usuário autenticado.
+      if (data.dbSaved !== true) {
+        console.warn("[payment] assinatura criada, mas não persistida no banco:", data.dbError);
+
         let currentUserId: string | null = null;
         try {
           currentUserId = await auth.ensureUserId();
@@ -250,21 +257,23 @@ const Index = () => {
           currentUserId = null;
         }
 
-        const { error: subError } = await supabase.from("subscriptions").insert({
-          lead_id: leadId,
-          user_id: currentUserId,
-          asaas_customer_id: data.customerId,
-          asaas_subscription_id: data.subscriptionId,
-          billing_type: paymentData.paymentMethod,
-          status: data.status || "ACTIVE",
-          plan_value: selectedPlanData.price,
-          plan_name: selectedPlanData.name,
-          bank_slip_url: data.bankSlipUrl || null,
-          pix_qr_code_url: data.pixQrCodeUrl || null,
-        });
+        if (currentUserId) {
+          const { error: subError } = await supabase.from("subscriptions").insert({
+            lead_id: leadId,
+            user_id: currentUserId,
+            asaas_customer_id: data.customerId,
+            asaas_subscription_id: data.subscriptionId,
+            billing_type: paymentData.paymentMethod,
+            status: data.status || "ACTIVE",
+            plan_value: selectedPlanData.price,
+            plan_name: selectedPlanData.name,
+            bank_slip_url: data.bankSlipUrl || null,
+            pix_qr_code_url: data.pixQrCodeUrl || null,
+          });
 
-        if (subError) {
-          console.error("Error saving subscription:", subError);
+          if (subError) {
+            console.error("Error saving subscription (fallback):", subError);
+          }
         }
       }
 
