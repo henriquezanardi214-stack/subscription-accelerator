@@ -294,7 +294,19 @@ const Index = () => {
   };
 
   const handleRegisterNext = () => {
-    setCurrentStep(5);
+    void (async () => {
+      try {
+        await auth.ensureUserId();
+        setCurrentStep(5);
+      } catch {
+        toast({
+          title: "Sessão expirada",
+          description: "Faça login novamente para concluir o cadastro.",
+          variant: "destructive",
+        });
+        setCurrentStep(4);
+      }
+    })();
   };
 
   /**
