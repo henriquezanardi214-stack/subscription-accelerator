@@ -121,10 +121,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Check storage
     const stored = readStoredSession();
+    const storedRefreshToken = stored?.refresh_token;
+
     if (isSessionValid(stored)) {
       setSession(stored);
       sessionRef.current = stored;
       return stored.user.id;
+    }
+
+    // If we have a stored (but expired) session, try to refresh using refresh_token.
+    // This prevents false "Sessão expirada" when the access token expired while the user was filling Step 5.
+    if (storedRefreshToken) {
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession({
+        refresh_token: storedRefreshToken,
+      });
+
+      if (!refreshError && refreshed.session?.user?.id) {
+        setSession(refreshed.session);
+        sessionRef.current = refreshed.session;
+        return refreshed.session.user.id;
+      }
     }
 
     // Try getSession (may trigger network refresh)
