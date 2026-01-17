@@ -20,6 +20,7 @@ import Leads from "./pages/admin/Leads";
 import Qualifications from "./pages/admin/Qualifications";
 import Payments from "./pages/admin/Payments";
 import Documents from "./pages/admin/Documents";
+import Formations from "./pages/admin/Formations";
 import FormularioAbertura from "./pages/FormularioAbertura";
 
 const queryClient = new QueryClient();
@@ -60,6 +61,7 @@ const App = () => (
               <Route path="qualifications" element={<Qualifications />} />
               <Route path="payments" element={<Payments />} />
               <Route path="documents" element={<Documents />} />
+              <Route path="formations" element={<Formations />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
