@@ -3,70 +3,94 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Building } from "lucide-react";
+import { Loader2, CreditCard, Receipt } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-interface CompanyFormation {
+interface Subscription {
   id: string;
-  iptu: string;
-  lead_id: string;
+  asaas_customer_id: string;
+  asaas_subscription_id: string;
+  billing_type: string;
+  plan_name: string | null;
+  plan_value: number;
+  status: string;
   created_at: string;
+  lead_id: string;
   lead?: {
     name: string;
     email: string;
+    phone: string;
   };
-  partners?: {
-    id: string;
-    name: string;
-    cpf: string;
-    city_state: string;
-  }[];
 }
 
 const Payments = () => {
-  const [formations, setFormations] = useState<CompanyFormation[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchFormations = async () => {
-      const { data: formData, error } = await supabase
-        .from("company_formations")
+    const fetchSubscriptions = async () => {
+      const { data: subsData, error } = await supabase
+        .from("subscriptions")
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (!error && formData) {
-        // Fetch leads and partners
-        const leadIds = formData.map(f => f.lead_id);
-        const formationIds = formData.map(f => f.id);
+      if (!error && subsData) {
+        // Fetch leads
+        const leadIds = subsData.map(s => s.lead_id);
 
-        const [leadsRes, partnersRes] = await Promise.all([
-          supabase.from("leads").select("id, name, email").in("id", leadIds),
-          supabase.from("partners").select("*").in("company_formation_id", formationIds),
-        ]);
+        const { data: leadsData } = await supabase
+          .from("leads")
+          .select("id, name, email, phone")
+          .in("id", leadIds);
 
-        const leadsMap = new Map(leadsRes.data?.map(l => [l.id, l]) || []);
-        const partnersMap = new Map<string, typeof partnersRes.data>();
-        
-        partnersRes.data?.forEach(p => {
-          const existing = partnersMap.get(p.company_formation_id) || [];
-          existing.push(p);
-          partnersMap.set(p.company_formation_id, existing);
-        });
+        const leadsMap = new Map(leadsData?.map(l => [l.id, l]) || []);
 
-        const enrichedData = formData.map(f => ({
-          ...f,
-          lead: leadsMap.get(f.lead_id),
-          partners: partnersMap.get(f.id) || [],
+        const enrichedData = subsData.map(s => ({
+          ...s,
+          lead: leadsMap.get(s.lead_id),
         }));
 
-        setFormations(enrichedData);
+        setSubscriptions(enrichedData);
       }
       setLoading(false);
     };
 
-    fetchFormations();
+    fetchSubscriptions();
   }, []);
+
+  const getStatusBadge = (status: string) => {
+    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+      ACTIVE: "default",
+      PENDING: "secondary",
+      OVERDUE: "destructive",
+      CANCELED: "outline",
+    };
+    const labels: Record<string, string> = {
+      ACTIVE: "Ativo",
+      PENDING: "Pendente",
+      OVERDUE: "Atrasado",
+      CANCELED: "Cancelado",
+    };
+    return (
+      <Badge variant={variants[status] || "secondary"}>
+        {labels[status] || status}
+      </Badge>
+    );
+  };
+
+  const getBillingTypeBadge = (billingType: string) => {
+    const labels: Record<string, string> = {
+      BOLETO: "Boleto",
+      PIX: "PIX",
+      CREDIT_CARD: "Cartão",
+    };
+    return (
+      <Badge variant="outline">
+        {labels[billingType] || billingType}
+      </Badge>
+    );
+  };
 
   if (loading) {
     return (
@@ -79,55 +103,71 @@ const Payments = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Pagamentos / Empresas</h1>
-        <Badge variant="secondary">{formations.length} total</Badge>
+        <h1 className="text-3xl font-bold">Pagamentos</h1>
+        <Badge variant="secondary">{subscriptions.length} assinaturas</Badge>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Empresas Formadas</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            Assinaturas
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {formations.length === 0 ? (
+          {subscriptions.length === 0 ? (
             <p className="text-muted-foreground text-center py-8">
-              Nenhuma empresa formada ainda.
+              Nenhuma assinatura encontrada.
             </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Lead</TableHead>
-                  <TableHead>IPTU</TableHead>
-                  <TableHead>Sócios</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Plano</TableHead>
+                  <TableHead>Valor</TableHead>
+                  <TableHead>Forma de Pagamento</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>ID Asaas</TableHead>
                   <TableHead>Data</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {formations.map((formation) => (
-                  <TableRow key={formation.id}>
+                {subscriptions.map((sub) => (
+                  <TableRow key={sub.id}>
                     <TableCell>
                       <div>
-                        <div className="font-medium">{formation.lead?.name || "N/A"}</div>
+                        <div className="font-medium">{sub.lead?.name || "N/A"}</div>
                         <div className="text-sm text-muted-foreground">
-                          {formation.lead?.email}
+                          {sub.lead?.email}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {sub.lead?.phone}
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{formation.iptu}</TableCell>
                     <TableCell>
-                      <div className="space-y-1">
-                        {formation.partners?.map((partner) => (
-                          <div key={partner.id} className="flex items-center gap-2">
-                            <Building className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-sm">
-                              {partner.name} ({partner.cpf})
-                            </span>
-                          </div>
-                        ))}
+                      <div className="flex items-center gap-2">
+                        <Receipt className="h-4 w-4 text-muted-foreground" />
+                        {sub.plan_name || "N/A"}
                       </div>
                     </TableCell>
+                    <TableCell className="font-medium">
+                      R$ {sub.plan_value.toFixed(2)}
+                    </TableCell>
                     <TableCell>
-                      {format(new Date(formation.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                      {getBillingTypeBadge(sub.billing_type)}
+                    </TableCell>
+                    <TableCell>
+                      {getStatusBadge(sub.status)}
+                    </TableCell>
+                    <TableCell>
+                      <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                        {sub.asaas_subscription_id}
+                      </code>
+                    </TableCell>
+                    <TableCell>
+                      {format(new Date(sub.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                     </TableCell>
                   </TableRow>
                 ))}
