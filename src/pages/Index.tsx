@@ -408,11 +408,20 @@ const Index = () => {
       return;
     }
 
-    // Pre-submission: ensure session is fresh by triggering a refresh
-    try {
-      await supabase.auth.refreshSession();
-    } catch (refreshErr) {
-      console.warn("[handleSubmit] Pre-submission refresh failed:", refreshErr);
+    // Pre-submission: verify we have a valid session
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session?.user?.id) {
+      // Try to refresh
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshed.session?.user?.id) {
+        toast({
+          title: "Sessão expirada",
+          description: "Faça login novamente para concluir o cadastro.",
+          variant: "destructive",
+        });
+        setCurrentStep(4);
+        return;
+      }
     }
 
     const result = await createFormation(

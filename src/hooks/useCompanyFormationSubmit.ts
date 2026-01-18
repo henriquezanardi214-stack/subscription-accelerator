@@ -1,7 +1,6 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { AuthRequiredError } from "@/lib/auth";
 import type { Socio, CompanyDocuments } from "@/components/checkout/StepCompanyForm";
@@ -35,7 +34,6 @@ interface CreateFormationParams {
 export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOptions = {}) {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const auth = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isAuthTokenError = (err: unknown) => {
@@ -114,38 +112,34 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
 
   /**
    * Helper: get authenticated user ID from server, refreshing if needed.
-   * Not wrapped in useCallback to avoid hook order issues.
+   * Throws AuthRequiredError if no valid session can be obtained.
    */
   const getAuthenticatedUserId = async (): Promise<string> => {
-    // 1. Try getting user from server (validates token with Supabase)
-    const first = await supabase.auth.getUser();
-    if (!first.error && first.data.user?.id) {
-      console.info("[getAuthenticatedUserId] Got user from getUser():", first.data.user.id);
-      return first.data.user.id;
+    // 1. Try getting session first (faster, includes tokens)
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData.session?.user?.id) {
+      console.info("[getAuthenticatedUserId] Got user from getSession():", sessionData.session.user.id);
+      return sessionData.session.user.id;
     }
 
     // 2. Try refreshing the session
-    console.info("[getAuthenticatedUserId] First getUser failed, refreshing session...");
-    try {
-      const { data: refreshed } = await supabase.auth.refreshSession();
-      if (refreshed.session?.user?.id) {
-        console.info("[getAuthenticatedUserId] Got user after refresh:", refreshed.session.user.id);
-        return refreshed.session.user.id;
-      }
-    } catch (err) {
-      console.warn("[getAuthenticatedUserId] refreshSession failed:", err);
+    console.info("[getAuthenticatedUserId] No session, attempting refresh...");
+    const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+    if (!refreshError && refreshed.session?.user?.id) {
+      console.info("[getAuthenticatedUserId] Got user after refresh:", refreshed.session.user.id);
+      return refreshed.session.user.id;
     }
 
-    // 3. Try getUser again after refresh
-    const second = await supabase.auth.getUser();
-    if (!second.error && second.data.user?.id) {
-      console.info("[getAuthenticatedUserId] Got user on second getUser():", second.data.user.id);
-      return second.data.user.id;
+    // 3. Try getUser from server (validates token)
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (!userError && userData.user?.id) {
+      console.info("[getAuthenticatedUserId] Got user from getUser():", userData.user.id);
+      return userData.user.id;
     }
 
-    // 4. Fallback to provider logic (storage-based)
-    console.info("[getAuthenticatedUserId] Falling back to auth.ensureUserId()");
-    return await auth.ensureUserId();
+    // 4. Final fallback - if all else fails, throw
+    console.error("[getAuthenticatedUserId] All auth methods failed, throwing AuthRequiredError");
+    throw new AuthRequiredError("Sessão expirada. Faça login novamente.");
   };
 
   /**
@@ -343,7 +337,7 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
         setIsSubmitting(false);
       }
     },
-    [auth, navigate, showErrorToast]
+    [navigate, showErrorToast]
   );
 
   return {
