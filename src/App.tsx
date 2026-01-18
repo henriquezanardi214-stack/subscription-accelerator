@@ -21,7 +21,6 @@ import Qualifications from "./pages/admin/Qualifications";
 import Payments from "./pages/admin/Payments";
 import Documents from "./pages/admin/Documents";
 import Formations from "./pages/admin/Formations";
-import FormularioAbertura from "./pages/FormularioAbertura";
 
 const queryClient = new QueryClient();
 
@@ -44,14 +43,6 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <AcessoPortal />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/formulario-abertura"
-              element={
-                <ProtectedRoute>
-                  <FormularioAbertura />
                 </ProtectedRoute>
               }
             />
