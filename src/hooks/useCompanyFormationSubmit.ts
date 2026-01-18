@@ -120,6 +120,24 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
     [toast, options]
   );
 
+  const getAuthenticatedUserId = useCallback(async (): Promise<string> => {
+    // Prefer a server-validated user (avoids relying on stale local session)
+    const first = await supabase.auth.getUser();
+    if (!first.error && first.data.user?.id) return first.data.user.id;
+
+    try {
+      await supabase.auth.refreshSession();
+    } catch (err) {
+      console.warn("[auth] refreshSession failed:", err);
+    }
+
+    const second = await supabase.auth.getUser();
+    if (!second.error && second.data.user?.id) return second.data.user.id;
+
+    // Fallback to provider logic (storage-based)
+    return await auth.ensureUserId();
+  }, [auth]);
+
   /**
    * Builds the documents array for insertion.
    */
@@ -227,31 +245,13 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
       setIsSubmitting(true);
 
       try {
-        // Validate (and hydrate) session via the provider helper.
-        // Do not rely on `auth.user` here, because it can be temporarily null while auth is hydrating,
-        // even though a valid session exists in storage.
-        let userId: string;
-        try {
-          userId = await auth.ensureUserId();
-        } catch (err) {
-          console.warn("[createFormation] ensureUserId failed, attempting fallback refresh:", err);
-          
-          // Fallback: try refreshing session directly
-          const { data: refreshed } = await supabase.auth.refreshSession();
-          if (refreshed.session?.user?.id) {
-            userId = refreshed.session.user.id;
-          } else {
-            // Last attempt: getSession
-            const { data: sessionData } = await supabase.auth.getSession();
-            if (sessionData.session?.user?.id) {
-              userId = sessionData.session.user.id;
-            } else {
-              const errorType = classifyError(err);
-              showErrorToast(errorType);
-              return { success: false, errorType };
-            }
-          }
-        }
+        console.info("[Step5] createFormation:start", {
+          leadId,
+          sociosCount: socios.length,
+          hasEcpf,
+        });
+
+        const userId = await getAuthenticatedUserId();
 
         // Generate formation ID client-side
         const formationId = crypto.randomUUID();
