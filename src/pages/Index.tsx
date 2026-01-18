@@ -408,20 +408,17 @@ const Index = () => {
       return;
     }
 
-    // Pre-submission: verify we have a valid session
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session?.user?.id) {
-      // Try to refresh
-      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError || !refreshed.session?.user?.id) {
-        toast({
-          title: "Sessão expirada",
-          description: "Faça login novamente para concluir o cadastro.",
-          variant: "destructive",
-        });
-        setCurrentStep(4);
-        return;
-      }
+    // Pre-submission: ensure auth is hydrated (SDK can return null even with a valid stored session)
+    try {
+      await auth.ensureUserId();
+    } catch {
+      toast({
+        title: "Sessão expirada",
+        description: "Faça login novamente para concluir o cadastro.",
+        variant: "destructive",
+      });
+      setCurrentStep(4);
+      return;
     }
 
     const result = await createFormation(

@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { AuthRequiredError } from "@/lib/auth";
 import type { Socio, CompanyDocuments } from "@/components/checkout/StepCompanyForm";
@@ -33,6 +34,7 @@ interface CreateFormationParams {
  */
 export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOptions = {}) {
   const navigate = useNavigate();
+  const auth = useAuth();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -112,7 +114,7 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
 
   /**
    * Helper: get authenticated user ID from server, refreshing if needed.
-   * Throws AuthRequiredError if no valid session can be obtained.
+   * Uses provider fallback to re-hydrate auth from storage when SDK isn't ready.
    */
   const getAuthenticatedUserId = async (): Promise<string> => {
     // 1. Try getting session first (faster, includes tokens)
@@ -137,9 +139,15 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
       return userData.user.id;
     }
 
-    // 4. Final fallback - if all else fails, throw
-    console.error("[getAuthenticatedUserId] All auth methods failed, throwing AuthRequiredError");
-    throw new AuthRequiredError("Sessão expirada. Faça login novamente.");
+    // 4. Provider fallback (rehydrates from storage + sets supabase-js internal state)
+    try {
+      const id = await auth.ensureUserId();
+      console.info("[getAuthenticatedUserId] Got user from auth.ensureUserId():", id);
+      return id;
+    } catch (e) {
+      console.error("[getAuthenticatedUserId] All auth methods failed:", e);
+      throw new AuthRequiredError("Sessão expirada. Faça login novamente.");
+    }
   };
 
   /**
@@ -337,7 +345,7 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
         setIsSubmitting(false);
       }
     },
-    [navigate, showErrorToast]
+    [auth, navigate, showErrorToast]
   );
 
   return {
