@@ -28,16 +28,8 @@ interface CreateFormationParams {
   companyDocuments: CompanyDocuments;
 }
 
-interface UpdateFormationParams {
-  formationId: string;
-  socios: Socio[];
-  iptu: string;
-  hasEcpf: boolean;
-  companyDocuments: CompanyDocuments;
-}
-
 /**
- * Hook to handle company formation persistence (create and update).
+ * Hook to handle company formation persistence (create).
  * Centralizes auth validation, error handling, and navigation logic.
  */
 export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOptions = {}) {
@@ -340,95 +332,8 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
     [auth, navigate, showErrorToast]
   );
 
-  /**
-   * Updates an existing company formation (used in FormularioAbertura.tsx).
-   */
-  const updateFormation = useCallback(
-    async (params: UpdateFormationParams, hasEcpfFromForm: boolean): Promise<SubmitResult> => {
-      const { formationId, socios, iptu, hasEcpf, companyDocuments } = params;
-
-      if (!formationId) {
-        return { success: false, errorType: "unknown", errorMessage: "Formation ID ausente" };
-      }
-
-      setIsSubmitting(true);
-
-      try {
-        // Validate session
-        try {
-          await auth.ensureUserId();
-        } catch (err) {
-          const errorType = classifyError(err);
-          showErrorToast(errorType);
-          return { success: false, errorType };
-        }
-
-        // Update company formation
-        const { error: formationError } = await supabase
-          .from("company_formations")
-          .update({
-            iptu: iptu,
-            has_ecpf: hasEcpf,
-            ecpf_certificate_url: companyDocuments.ecpf_url || null,
-          })
-          .eq("id", formationId);
-
-        if (formationError) {
-          console.error("Formation update error:", formationError);
-          throw formationError;
-        }
-
-        // Delete existing partners and documents to re-insert
-        await supabase.from("partners").delete().eq("company_formation_id", formationId);
-        await supabase.from("documents").delete().eq("company_formation_id", formationId);
-
-        // Insert partners
-        const partnersToInsert = buildPartnersPayload(formationId, socios);
-        const { error: partnersError } = await supabase.from("partners").insert(partnersToInsert);
-
-        if (partnersError) {
-          console.error("Partners error:", partnersError);
-          throw partnersError;
-        }
-
-        // Insert documents
-        const documentsToInsert = buildDocumentsPayload(formationId, partnersToInsert, socios, companyDocuments);
-        if (documentsToInsert.length > 0) {
-          const { error: docsError } = await supabase.from("documents").insert(documentsToInsert);
-          if (docsError) {
-            console.error("Documents error:", docsError);
-            // Non-blocking: documents are secondary
-          }
-        }
-
-        toast({
-          title: "Dados atualizados!",
-          description: "Suas informações foram salvas com sucesso.",
-        });
-
-        // Navigate based on e-CPF selection
-        if (hasEcpfFromForm) {
-          navigate("/acesso-portal");
-        } else {
-          navigate("/biometria");
-        }
-
-        return { success: true };
-      } catch (error) {
-        console.error("Error updating company formation:", error);
-        const errorType = classifyError(error);
-        showErrorToast(errorType);
-        return { success: false, errorType, errorMessage: String(error) };
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [auth, navigate, toast, showErrorToast]
-  );
-
   return {
     isSubmitting,
     createFormation,
-    updateFormation,
   };
 }

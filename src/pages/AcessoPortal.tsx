@@ -161,7 +161,13 @@ const AcessoPortal = () => {
                   step={step}
                   index={index}
                   isLast={index === progressSteps.length - 1}
-                  onEditDocuments={() => navigate("/formulario-abertura")}
+                  onEditDocuments={() =>
+                    window.open(
+                      "https://api.whatsapp.com/send/?phone=5511910112166&text=Quero+alterar+um+documento+de+abertura+da+empresa&type=phone_number&app_absent=0",
+                      "_blank",
+                      "noopener,noreferrer"
+                    )
+                  }
                 />
               ))}
             </div>
