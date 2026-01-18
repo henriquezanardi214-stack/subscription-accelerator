@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Stepper } from "@/components/checkout/Stepper";
 import { StepLead } from "@/components/checkout/StepLead";
@@ -11,6 +11,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCompanyFormationSubmit } from "@/hooks/useCompanyFormationSubmit";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import {
+  saveRegistrationProgress,
+  loadRegistrationProgress,
+  clearRegistrationProgress,
+} from "@/lib/registrationStorage";
 
 const steps = [
   { title: "Seus dados", description: "Informações de contato" },
@@ -58,7 +63,28 @@ const Index = () => {
     onSessionExpired: () => setCurrentStep(4),
   });
 
-  // Check user session and load resume data
+  // Persist progress whenever leadId or currentStep changes
+  useEffect(() => {
+    if (leadId) {
+      saveRegistrationProgress({ leadId, currentStep, leadData });
+    }
+  }, [leadId, currentStep, leadData]);
+
+  // Load progress from localStorage on mount (before auth check)
+  useEffect(() => {
+    const stored = loadRegistrationProgress();
+    if (stored?.leadId) {
+      setLeadId(stored.leadId);
+      if (stored.currentStep && stored.currentStep > 1) {
+        setCurrentStep(stored.currentStep);
+      }
+      if (stored.leadData) {
+        setLeadData(stored.leadData);
+      }
+    }
+  }, []);
+
+  // Check user session and load resume data from database
   useEffect(() => {
     const checkUserAndLoadData = async () => {
       if (auth.isLoading) return;
@@ -93,6 +119,7 @@ const Index = () => {
         const partners = formation.partners as { id: string }[] | null;
 
         if (partners && partners.length > 0) {
+          clearRegistrationProgress();
           navigate("/acesso-portal");
           return;
         }
@@ -120,6 +147,34 @@ const Index = () => {
         setHasEcpf(formation.has_ecpf || false);
         setSocios([createEmptySocio()]);
         setCurrentStep(5);
+      } else {
+        // No formation yet - if user is authenticated, try to find subscription and resume from Step 5
+        // Also update subscription.user_id if it's null (from payment before auth)
+        const storedProgress = loadRegistrationProgress();
+        if (storedProgress?.leadId) {
+          // Check if there's a subscription for this lead without user_id
+          const { data: subscription } = await supabase
+            .from("subscriptions")
+            .select("id, user_id")
+            .eq("lead_id", storedProgress.leadId)
+            .maybeSingle();
+
+          if (subscription && !subscription.user_id) {
+            // Update subscription with current user_id
+            await supabase
+              .from("subscriptions")
+              .update({ user_id: auth.user.id })
+              .eq("id", subscription.id);
+            console.info("[Index] Updated subscription with user_id:", auth.user.id);
+          }
+
+          // Resume at Step 5 since user is authenticated
+          setLeadId(storedProgress.leadId);
+          if (storedProgress.leadData) {
+            setLeadData(storedProgress.leadData);
+          }
+          setCurrentStep(5);
+        }
       }
 
       setIsLoadingResume(false);
@@ -302,10 +357,31 @@ const Index = () => {
     }
   };
 
-  const handleRegisterNext = () => {
+  /**
+   * After user registers/logs in, update subscription.user_id if needed and proceed to Step 5.
+   */
+  const handleRegisterNext = useCallback(() => {
     void (async () => {
       try {
-        await auth.ensureUserId();
+        const userId = await auth.ensureUserId();
+
+        // Update subscription.user_id if null (payment happened before auth)
+        if (leadId) {
+          const { data: subscription } = await supabase
+            .from("subscriptions")
+            .select("id, user_id")
+            .eq("lead_id", leadId)
+            .maybeSingle();
+
+          if (subscription && !subscription.user_id) {
+            await supabase
+              .from("subscriptions")
+              .update({ user_id: userId })
+              .eq("id", subscription.id);
+            console.info("[handleRegisterNext] Updated subscription with user_id:", userId);
+          }
+        }
+
         setCurrentStep(5);
       } catch {
         toast({
@@ -316,18 +392,21 @@ const Index = () => {
         setCurrentStep(4);
       }
     })();
-  };
+  }, [auth, leadId, toast]);
 
   /**
    * Step 5 submit handler - uses the extracted hook.
    * hasEcpfFromForm comes from the form (user's selection at submit time).
    */
-  /**
-   * Step 5 submit handler - uses the extracted hook.
-   * hasEcpfFromForm comes from the form (user's selection at submit time).
-   */
   const handleSubmit = async (hasEcpfFromForm: boolean) => {
-    if (!leadId) return;
+    if (!leadId) {
+      toast({
+        title: "Erro interno",
+        description: "Identificador do cadastro não encontrado. Recarregue a página.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Pre-submission: ensure session is fresh by triggering a refresh
     try {
@@ -336,7 +415,7 @@ const Index = () => {
       console.warn("[handleSubmit] Pre-submission refresh failed:", refreshErr);
     }
 
-    await createFormation(
+    const result = await createFormation(
       {
         leadId,
         socios,
@@ -346,6 +425,10 @@ const Index = () => {
       },
       hasEcpfFromForm
     );
+
+    if (result.success) {
+      clearRegistrationProgress();
+    }
   };
 
   if (isLoadingResume) {

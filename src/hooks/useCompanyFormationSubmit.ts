@@ -117,20 +117,34 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
    * Not wrapped in useCallback to avoid hook order issues.
    */
   const getAuthenticatedUserId = async (): Promise<string> => {
-    // Prefer a server-validated user (avoids relying on stale local session)
+    // 1. Try getting user from server (validates token with Supabase)
     const first = await supabase.auth.getUser();
-    if (!first.error && first.data.user?.id) return first.data.user.id;
-
-    try {
-      await supabase.auth.refreshSession();
-    } catch (err) {
-      console.warn("[auth] refreshSession failed:", err);
+    if (!first.error && first.data.user?.id) {
+      console.info("[getAuthenticatedUserId] Got user from getUser():", first.data.user.id);
+      return first.data.user.id;
     }
 
-    const second = await supabase.auth.getUser();
-    if (!second.error && second.data.user?.id) return second.data.user.id;
+    // 2. Try refreshing the session
+    console.info("[getAuthenticatedUserId] First getUser failed, refreshing session...");
+    try {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      if (refreshed.session?.user?.id) {
+        console.info("[getAuthenticatedUserId] Got user after refresh:", refreshed.session.user.id);
+        return refreshed.session.user.id;
+      }
+    } catch (err) {
+      console.warn("[getAuthenticatedUserId] refreshSession failed:", err);
+    }
 
-    // Fallback to provider logic (storage-based)
+    // 3. Try getUser again after refresh
+    const second = await supabase.auth.getUser();
+    if (!second.error && second.data.user?.id) {
+      console.info("[getAuthenticatedUserId] Got user on second getUser():", second.data.user.id);
+      return second.data.user.id;
+    }
+
+    // 4. Fallback to provider logic (storage-based)
+    console.info("[getAuthenticatedUserId] Falling back to auth.ensureUserId()");
     return await auth.ensureUserId();
   };
 
