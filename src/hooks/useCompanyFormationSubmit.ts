@@ -120,7 +120,11 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
     [toast, options]
   );
 
-  const getAuthenticatedUserId = useCallback(async (): Promise<string> => {
+  /**
+   * Helper: get authenticated user ID from server, refreshing if needed.
+   * Not wrapped in useCallback to avoid hook order issues.
+   */
+  const getAuthenticatedUserId = async (): Promise<string> => {
     // Prefer a server-validated user (avoids relying on stale local session)
     const first = await supabase.auth.getUser();
     if (!first.error && first.data.user?.id) return first.data.user.id;
@@ -136,7 +140,7 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
 
     // Fallback to provider logic (storage-based)
     return await auth.ensureUserId();
-  }, [auth]);
+  };
 
   /**
    * Builds the documents array for insertion.
