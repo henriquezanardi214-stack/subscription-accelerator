@@ -33,6 +33,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const initializedRef = useRef(false);
 
+  // Prevent concurrent refreshSession calls (refresh token rotation can revoke tokens if raced)
+  const refreshInFlightRef = useRef<Promise<Session | null> | null>(null);
+
   // Refs para evitar closures "stale" dentro de callbacks async (ex.: ensureUserId)
   const sessionRef = useRef<Session | null>(null);
   const isLoadingRef = useRef(true);
@@ -132,18 +135,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return inMemory.user.id;
     }
 
-    // Best-effort: ask supabase-js to refresh using whatever it has in storage.
-    // This updates the internal auth state used by database requests.
-    try {
-      const { data: refreshedAuto } = await supabase.auth.refreshSession();
-      if (refreshedAuto.session?.user?.id) {
-        setSession(refreshedAuto.session);
-        sessionRef.current = refreshedAuto.session;
-        return refreshedAuto.session.user.id;
-      }
-    } catch {
-      // ignore and continue to other strategies
+    // Check supabase-js session (may already be hydrated even if our state isn't)
+    const { data: current } = await supabase.auth.getSession();
+    if (current.session?.user?.id) {
+      setSession(current.session);
+      sessionRef.current = current.session;
+      return current.session.user.id;
     }
+
+    const refreshOnce = async (refreshToken?: string): Promise<Session | null> => {
+      if (!refreshInFlightRef.current) {
+        refreshInFlightRef.current = (async () => {
+          try {
+            const { data, error } = refreshToken
+              ? await supabase.auth.refreshSession({ refresh_token: refreshToken })
+              : await supabase.auth.refreshSession();
+
+            if (error) return null;
+            if (data.session) {
+              setSession(data.session);
+              sessionRef.current = data.session;
+            }
+            return data.session ?? null;
+          } catch {
+            return null;
+          } finally {
+            refreshInFlightRef.current = null;
+          }
+        })();
+      }
+
+      return refreshInFlightRef.current;
+    };
 
     // Check storage (no network)
     const stored = readStoredSession();
@@ -164,16 +187,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // If we have a stored (but expired) session, try to refresh using refresh_token.
     // This prevents false "Sessão expirada" when the access token expired while the user was filling Step 5.
     if (storedRefreshToken) {
-      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession({
-        refresh_token: storedRefreshToken,
-      });
-
-      if (!refreshError && refreshed.session?.user?.id) {
-        setSession(refreshed.session);
-        sessionRef.current = refreshed.session;
-        return refreshed.session.user.id;
-      }
+      const refreshed = await refreshOnce(storedRefreshToken);
+      if (refreshed?.user?.id) return refreshed.user.id;
     }
+
+    // Last attempt: refresh using SDK storage (guarded by mutex)
+    const refreshedAuto = await refreshOnce();
+    if (refreshedAuto?.user?.id) return refreshedAuto.user.id;
 
     // Try getSession (may trigger network refresh)
     const { data, error } = await supabase.auth.getSession();
