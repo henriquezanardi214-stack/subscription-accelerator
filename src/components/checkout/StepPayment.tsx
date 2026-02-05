@@ -582,6 +582,19 @@ export const StepPayment = ({
         ))}
       </div>
 
+      {/* Disclaimer */}
+      <p className="text-center text-sm text-muted-foreground mb-6">
+        Ao clicar em Finalizar, você está declarando que leu e concordou com nosso{" "}
+        <a
+          href="https://contabiliadigital.com.br/wp-content/uploads/2026/02/Termos-e-Condicoes-Contabilia.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary underline hover:text-primary/80"
+        >
+          Contrato de Prestação de Serviços
+        </a>
+      </p>
+
       <div className="flex gap-4 max-w-md mx-auto">
         <Button
           type="button"
