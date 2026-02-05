@@ -1,14 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Stepper } from "@/components/checkout/Stepper";
 import { StepLead } from "@/components/checkout/StepLead";
 import { StepQualification } from "@/components/checkout/StepQualification";
 import { StepPayment, plans, PaymentData } from "@/components/checkout/StepPayment";
 import { StepRegister } from "@/components/checkout/StepRegister";
-import { StepCompanyForm, Socio, CompanyDocuments, createEmptySocio } from "@/components/checkout/StepCompanyForm";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useCompanyFormationSubmit } from "@/hooks/useCompanyFormationSubmit";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import {
@@ -16,15 +14,12 @@ import {
   loadRegistrationProgress,
   clearRegistrationProgress,
 } from "@/lib/registrationStorage";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangle } from "lucide-react";
 
 const steps = [
   { title: "Seus dados", description: "Informações de contato" },
   { title: "Qualificação", description: "Sobre sua empresa" },
   { title: "Plano", description: "Escolha seu plano" },
   { title: "Cadastro", description: "Crie sua conta" },
-  { title: "Abertura", description: "Dados da empresa" },
 ];
 
 const Index = () => {
@@ -54,21 +49,6 @@ const Index = () => {
   // Step 3 - Payment
   const [selectedPlan, setSelectedPlan] = useState("");
 
-  // Step 5 - Company Form
-  const [socios, setSocios] = useState<Socio[]>([createEmptySocio()]);
-  const [iptu, setIptu] = useState("");
-  const [hasEcpf, setHasEcpf] = useState(false);
-  const [companyDocuments, setCompanyDocuments] = useState<CompanyDocuments>({});
-
-  // Session expiry warning state
-  const [sessionExpiringWarning, setSessionExpiringWarning] = useState(false);
-  const sessionCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Hook for Step 5 submission
-  const { isSubmitting, createFormation } = useCompanyFormationSubmit({
-    onSessionExpired: () => setCurrentStep(4),
-  });
-
   // Persist progress whenever leadId or currentStep changes
   useEffect(() => {
     if (leadId) {
@@ -76,86 +56,12 @@ const Index = () => {
     }
   }, [leadId, currentStep, leadData]);
 
-  // Proactive session refresh when on Step 5
-  useEffect(() => {
-    if (currentStep !== 5) {
-      // Clear interval when leaving Step 5
-      if (sessionCheckRef.current) {
-        clearInterval(sessionCheckRef.current);
-        sessionCheckRef.current = null;
-      }
-      setSessionExpiringWarning(false);
-      return;
-    }
-
-    const checkAndRefreshSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session?.expires_at) {
-          setSessionExpiringWarning(false);
-          return;
-        }
-
-        const now = Math.floor(Date.now() / 1000);
-        const timeLeft = session.expires_at - now;
-
-        // If less than 10 minutes left, show warning
-        if (timeLeft < 600 && timeLeft > 0) {
-          setSessionExpiringWarning(true);
-          
-          // Try to refresh proactively
-          const { error } = await supabase.auth.refreshSession();
-          if (!error) {
-            setSessionExpiringWarning(false);
-            console.info("[Index] Session refreshed proactively");
-          }
-        } else if (timeLeft <= 0) {
-          // Session already expired
-          setSessionExpiringWarning(true);
-        } else {
-          setSessionExpiringWarning(false);
-        }
-
-        // If more than 50 minutes passed (token near expiry), refresh proactively
-        if (timeLeft > 0 && timeLeft < 600) {
-          const { error } = await supabase.auth.refreshSession();
-          if (error) {
-            console.warn("[Index] Proactive refresh failed:", error.message);
-          }
-        }
-      } catch (err) {
-        console.error("[Index] Session check error:", err);
-      }
-    };
-
-    // Check immediately
-    checkAndRefreshSession();
-
-    // Check every 5 minutes
-    sessionCheckRef.current = setInterval(checkAndRefreshSession, 5 * 60 * 1000);
-
-    return () => {
-      if (sessionCheckRef.current) {
-        clearInterval(sessionCheckRef.current);
-        sessionCheckRef.current = null;
-      }
-    };
-  }, [currentStep]);
-
-  // Load progress from localStorage on mount (before auth check)
-  useEffect(() => {
-    if (leadId) {
-      saveRegistrationProgress({ leadId, currentStep, leadData });
-    }
-  }, [leadId, currentStep, leadData]);
-
-  // Load progress from localStorage on mount (before auth check)
+  // Load progress from localStorage on mount
   useEffect(() => {
     const stored = loadRegistrationProgress();
     if (stored?.leadId) {
       setLeadId(stored.leadId);
-      if (stored.currentStep && stored.currentStep > 1) {
+      if (stored.currentStep && stored.currentStep > 1 && stored.currentStep <= 4) {
         setCurrentStep(stored.currentStep);
       }
       if (stored.leadData) {
@@ -164,7 +70,7 @@ const Index = () => {
     }
   }, []);
 
-  // Check user session and load resume data from database
+  // Check user session and redirect if already completed
   useEffect(() => {
     const checkUserAndLoadData = async () => {
       if (auth.isLoading) return;
@@ -174,17 +80,13 @@ const Index = () => {
         return;
       }
 
+      // Check if user has completed company formation
       const { data: formation, error: formationError } = await supabase
         .from("company_formations")
         .select(`
           id,
           lead_id,
-          iptu,
-          has_ecpf,
-          ecpf_certificate_url,
-          leads (*),
-          partners (*),
-          documents:documents (*)
+          partners (id)
         `)
         .eq("user_id", auth.user.id)
         .order("created_at", { ascending: false })
@@ -192,68 +94,45 @@ const Index = () => {
         .maybeSingle();
 
       if (formationError) {
-        console.error("Error fetching company formation (Index resume):", formationError);
+        console.error("Error fetching company formation:", formationError);
       }
 
       if (formation) {
         const partners = formation.partners as { id: string }[] | null;
 
         if (partners && partners.length > 0) {
+          // User already completed - redirect to portal
           clearRegistrationProgress();
           navigate("/acesso-portal");
           return;
         }
 
-        const lead = formation.leads as { name: string; email: string; phone: string } | null;
+        // Has formation but no partners - redirect to complete
+        navigate("/formulario-empresa");
+        return;
+      }
 
-        const { data: qualification } = await supabase
-          .from("qualifications")
-          .select("*")
-          .eq("lead_id", formation.lead_id)
+      // Check if user has subscription but no formation yet
+      const storedProgress = loadRegistrationProgress();
+      if (storedProgress?.leadId) {
+        const { data: subscription } = await supabase
+          .from("subscriptions")
+          .select("id, user_id")
+          .eq("lead_id", storedProgress.leadId)
           .maybeSingle();
 
-        setLeadId(formation.lead_id);
-        setLeadData({
-          nome: lead?.name || "",
-          email: lead?.email || "",
-          telefone: lead?.phone || "",
-        });
-        setQualificationData({
-          segmento: qualification?.company_segment || "",
-          areaAtuacao: qualification?.area_of_operation || "",
-          faturamento: qualification?.monthly_revenue || "",
-        });
-        setIptu(formation.iptu || "");
-        setHasEcpf(formation.has_ecpf || false);
-        setSocios([createEmptySocio()]);
-        setCurrentStep(5);
-      } else {
-        // No formation yet - if user is authenticated, try to find subscription and resume from Step 5
-        // Also update subscription.user_id if it's null (from payment before auth)
-        const storedProgress = loadRegistrationProgress();
-        if (storedProgress?.leadId) {
-          // Check if there's a subscription for this lead without user_id
-          const { data: subscription } = await supabase
-            .from("subscriptions")
-            .select("id, user_id")
-            .eq("lead_id", storedProgress.leadId)
-            .maybeSingle();
-
-          if (subscription && !subscription.user_id) {
-            // Update subscription with current user_id
+        if (subscription) {
+          // Update subscription with user_id if needed
+          if (!subscription.user_id) {
             await supabase
               .from("subscriptions")
               .update({ user_id: auth.user.id })
               .eq("id", subscription.id);
-            console.info("[Index] Updated subscription with user_id:", auth.user.id);
           }
-
-          // Resume at Step 5 since user is authenticated
-          setLeadId(storedProgress.leadId);
-          if (storedProgress.leadData) {
-            setLeadData(storedProgress.leadData);
-          }
-          setCurrentStep(5);
+          
+          // Redirect to company form
+          navigate("/formulario-empresa");
+          return;
         }
       }
 
@@ -380,10 +259,9 @@ const Index = () => {
         throw new Error(data.error || "Erro ao processar pagamento");
       }
 
-      // Fallback (legado): se por algum motivo o backend não conseguiu persistir,
-      // tentamos salvar do cliente quando já houver usuário autenticado.
+      // Fallback: save subscription if backend didn't
       if (data.dbSaved !== true) {
-        console.warn("[payment] assinatura criada, mas não persistida no banco:", data.dbError);
+        console.warn("[payment] Subscription created but not saved:", data.dbError);
 
         let currentUserId: string | null = null;
         try {
@@ -438,14 +316,14 @@ const Index = () => {
   };
 
   /**
-   * After user registers/logs in, update subscription.user_id if needed and proceed to Step 5.
+   * After user registers/logs in, redirect to /formulario-empresa
    */
   const handleRegisterNext = useCallback(() => {
     void (async () => {
       try {
         const userId = await auth.ensureUserId();
 
-        // Update subscription.user_id if null (payment happened before auth)
+        // Update subscription.user_id if null
         if (leadId) {
           const { data: subscription } = await supabase
             .from("subscriptions")
@@ -462,7 +340,8 @@ const Index = () => {
           }
         }
 
-        setCurrentStep(5);
+        // Redirect to company form page
+        navigate("/formulario-empresa");
       } catch {
         toast({
           title: "Sessão expirada",
@@ -472,50 +351,7 @@ const Index = () => {
         setCurrentStep(4);
       }
     })();
-  }, [auth, leadId, toast]);
-
-  /**
-   * Step 5 submit handler - uses the extracted hook.
-   * hasEcpfFromForm comes from the form (user's selection at submit time).
-   */
-  const handleSubmit = async (hasEcpfFromForm: boolean) => {
-    if (!leadId) {
-      toast({
-        title: "Erro interno",
-        description: "Identificador do cadastro não encontrado. Recarregue a página.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Pre-submission: ensure auth is hydrated (SDK can return null even with a valid stored session)
-    try {
-      await auth.ensureUserId();
-    } catch {
-      toast({
-        title: "Sessão expirada",
-        description: "Faça login novamente para concluir o cadastro.",
-        variant: "destructive",
-      });
-      setCurrentStep(4);
-      return;
-    }
-
-    const result = await createFormation(
-      {
-        leadId,
-        socios,
-        iptu,
-        hasEcpf,
-        companyDocuments,
-      },
-      hasEcpfFromForm
-    );
-
-    if (result.success) {
-      clearRegistrationProgress();
-    }
-  };
+  }, [auth, leadId, toast, navigate]);
 
   if (isLoadingResume) {
     return (
@@ -575,32 +411,6 @@ const Index = () => {
                 onNext={handleRegisterNext}
                 onBack={handleBack}
               />
-            )}
-
-            {currentStep === 5 && (
-              <>
-                {sessionExpiringWarning && (
-                  <Alert variant="destructive" className="mb-4">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      Sua sessão está expirando. Salve seu progresso ou faça login novamente.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <StepCompanyForm
-                  socios={socios}
-                  iptu={iptu}
-                  hasEcpf={hasEcpf}
-                  companyDocuments={companyDocuments}
-                  onUpdateSocios={setSocios}
-                  onUpdateIptu={setIptu}
-                  onUpdateHasEcpf={setHasEcpf}
-                  onUpdateCompanyDocuments={setCompanyDocuments}
-                  onBack={handleBack}
-                  onSubmit={handleSubmit}
-                  isLoading={isSubmitting || isLoading}
-                />
-              </>
             )}
           </div>
         </div>
