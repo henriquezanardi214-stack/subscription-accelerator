@@ -14,6 +14,7 @@ import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import Login from "./pages/Login";
 import AcessoPortal from "./pages/AcessoPortal";
+import FormularioEmpresa from "./pages/FormularioEmpresa";
 import AdminLayout from "./components/admin/AdminLayout";
 import Dashboard from "./pages/admin/Dashboard";
 import Leads from "./pages/admin/Leads";
@@ -43,6 +44,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <AcessoPortal />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/formulario-empresa"
+              element={
+                <ProtectedRoute>
+                  <FormularioEmpresa />
                 </ProtectedRoute>
               }
             />
