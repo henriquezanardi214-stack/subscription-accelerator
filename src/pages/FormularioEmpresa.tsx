@@ -80,11 +80,8 @@ const FormularioEmpresa = () => {
         const timeLeft = session.expires_at - now;
 
         if (timeLeft < 600 && timeLeft > 0) {
+          // Only warn; avoid proactive refresh here to prevent refresh-token rotation races.
           setSessionExpiringWarning(true);
-          const { error } = await supabase.auth.refreshSession();
-          if (!error) {
-            setSessionExpiringWarning(false);
-          }
         } else if (timeLeft <= 0) {
           setSessionExpiringWarning(true);
         } else {

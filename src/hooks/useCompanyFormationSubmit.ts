@@ -117,35 +117,15 @@ export function useCompanyFormationSubmit(options: UseCompanyFormationSubmitOpti
    * Uses provider fallback to re-hydrate auth from storage when SDK isn't ready.
    */
   const getAuthenticatedUserId = async (): Promise<string> => {
-    // 1. Try getting session first (faster, includes tokens)
+    // Prefer the in-memory SDK session first
     const { data: sessionData } = await supabase.auth.getSession();
-    if (sessionData.session?.user?.id) {
-      console.info("[getAuthenticatedUserId] Got user from getSession():", sessionData.session.user.id);
-      return sessionData.session.user.id;
-    }
+    if (sessionData.session?.user?.id) return sessionData.session.user.id;
 
-    // 2. Try refreshing the session
-    console.info("[getAuthenticatedUserId] No session, attempting refresh...");
-    const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
-    if (!refreshError && refreshed.session?.user?.id) {
-      console.info("[getAuthenticatedUserId] Got user after refresh:", refreshed.session.user.id);
-      return refreshed.session.user.id;
-    }
-
-    // 3. Try getUser from server (validates token)
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (!userError && userData.user?.id) {
-      console.info("[getAuthenticatedUserId] Got user from getUser():", userData.user.id);
-      return userData.user.id;
-    }
-
-    // 4. Provider fallback (rehydrates from storage + sets supabase-js internal state)
+    // Provider fallback (rehydrates from storage + uses a refresh mutex inside AuthProvider)
     try {
       const id = await auth.ensureUserId();
-      console.info("[getAuthenticatedUserId] Got user from auth.ensureUserId():", id);
       return id;
     } catch (e) {
-      console.error("[getAuthenticatedUserId] All auth methods failed:", e);
       throw new AuthRequiredError("Sessão expirada. Faça login novamente.");
     }
   };
