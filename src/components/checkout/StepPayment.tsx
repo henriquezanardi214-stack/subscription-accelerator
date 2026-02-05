@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, Check, X, ArrowRight, CreditCard, Loader2, Search, QrCode, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCepLookup } from "@/hooks/useCepLookup";
@@ -114,6 +115,7 @@ export const StepPayment = ({
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>("CREDIT_CARD");
   const [loadingCep, setLoadingCep] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const { lookupCep } = useCepLookup();
   const [creditCard, setCreditCard] = useState<CreditCardData>({
     holderName: "",
@@ -582,18 +584,27 @@ export const StepPayment = ({
         ))}
       </div>
 
-      {/* Disclaimer */}
-      <p className="text-center text-sm text-muted-foreground mb-6">
-        Ao clicar em Finalizar, você está declarando que leu e concordou com nosso{" "}
-        <a
-          href="https://contabiliadigital.com.br/wp-content/uploads/2026/02/Termos-e-Condicoes-Contabilia.pdf"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary underline hover:text-primary/80"
-        >
-          Contrato de Prestação de Serviços
-        </a>
-      </p>
+      {/* Disclaimer with Checkbox */}
+      <div className="flex items-start gap-3 justify-center mb-6">
+        <Checkbox
+          id="accept-terms"
+          checked={acceptedTerms}
+          onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+          className="mt-0.5"
+        />
+        <Label htmlFor="accept-terms" className="text-sm text-muted-foreground cursor-pointer leading-relaxed">
+          Li e concordo com o{" "}
+          <a
+            href="https://contabiliadigital.com.br/wp-content/uploads/2026/02/Termos-e-Condicoes-Contabilia.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline hover:text-primary/80"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Contrato de Prestação de Serviços
+          </a>
+        </Label>
+      </div>
 
       <div className="flex gap-4 max-w-md mx-auto">
         <Button
@@ -607,7 +618,7 @@ export const StepPayment = ({
         </Button>
         <Button
           type="button"
-          disabled={!selectedPlan}
+          disabled={!selectedPlan || !acceptedTerms}
           onClick={handleContinueToPayment}
           className="flex-1 h-12 gradient-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
         >
