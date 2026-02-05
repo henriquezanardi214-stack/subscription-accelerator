@@ -14,6 +14,7 @@ import { ArrowLeft, Plus, Trash2, User, FileText, MapPin, Building, Loader2, Sea
 import { useCepLookup } from "@/hooks/useCepLookup";
 import { validateCpf, formatCpf } from "@/lib/cpf";
 import { FileUpload } from "./FileUpload";
+import { SessionDiagnostics } from "./SessionDiagnostics";
 
 interface SocioDocument {
   rg_url?: string;
@@ -244,6 +245,9 @@ export const StepCompanyForm = ({
 
   return (
     <div className="animate-slide-up">
+      {/* Admin-only session diagnostics */}
+      <SessionDiagnostics />
+
       <div className="text-center mb-8">
         <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
           Dados para abertura da empresa

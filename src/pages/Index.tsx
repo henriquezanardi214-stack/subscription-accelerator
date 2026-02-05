@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Stepper } from "@/components/checkout/Stepper";
 import { StepLead } from "@/components/checkout/StepLead";
@@ -16,6 +16,8 @@ import {
   loadRegistrationProgress,
   clearRegistrationProgress,
 } from "@/lib/registrationStorage";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertTriangle } from "lucide-react";
 
 const steps = [
   { title: "Seus dados", description: "Informações de contato" },
@@ -58,12 +60,90 @@ const Index = () => {
   const [hasEcpf, setHasEcpf] = useState(false);
   const [companyDocuments, setCompanyDocuments] = useState<CompanyDocuments>({});
 
+  // Session expiry warning state
+  const [sessionExpiringWarning, setSessionExpiringWarning] = useState(false);
+  const sessionCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Hook for Step 5 submission
   const { isSubmitting, createFormation } = useCompanyFormationSubmit({
     onSessionExpired: () => setCurrentStep(4),
   });
 
   // Persist progress whenever leadId or currentStep changes
+  useEffect(() => {
+    if (leadId) {
+      saveRegistrationProgress({ leadId, currentStep, leadData });
+    }
+  }, [leadId, currentStep, leadData]);
+
+  // Proactive session refresh when on Step 5
+  useEffect(() => {
+    if (currentStep !== 5) {
+      // Clear interval when leaving Step 5
+      if (sessionCheckRef.current) {
+        clearInterval(sessionCheckRef.current);
+        sessionCheckRef.current = null;
+      }
+      setSessionExpiringWarning(false);
+      return;
+    }
+
+    const checkAndRefreshSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.expires_at) {
+          setSessionExpiringWarning(false);
+          return;
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        const timeLeft = session.expires_at - now;
+
+        // If less than 10 minutes left, show warning
+        if (timeLeft < 600 && timeLeft > 0) {
+          setSessionExpiringWarning(true);
+          
+          // Try to refresh proactively
+          const { error } = await supabase.auth.refreshSession();
+          if (!error) {
+            setSessionExpiringWarning(false);
+            console.info("[Index] Session refreshed proactively");
+          }
+        } else if (timeLeft <= 0) {
+          // Session already expired
+          setSessionExpiringWarning(true);
+        } else {
+          setSessionExpiringWarning(false);
+        }
+
+        // If more than 50 minutes passed (token near expiry), refresh proactively
+        if (timeLeft > 0 && timeLeft < 600) {
+          const { error } = await supabase.auth.refreshSession();
+          if (error) {
+            console.warn("[Index] Proactive refresh failed:", error.message);
+          }
+        }
+      } catch (err) {
+        console.error("[Index] Session check error:", err);
+      }
+    };
+
+    // Check immediately
+    checkAndRefreshSession();
+
+    // Check every 5 minutes
+    sessionCheckRef.current = setInterval(checkAndRefreshSession, 5 * 60 * 1000);
+
+    return () => {
+      if (sessionCheckRef.current) {
+        clearInterval(sessionCheckRef.current);
+        sessionCheckRef.current = null;
+      }
+    };
+  }, [currentStep]);
+
+  // Load progress from localStorage on mount (before auth check)
   useEffect(() => {
     if (leadId) {
       saveRegistrationProgress({ leadId, currentStep, leadData });
@@ -498,19 +578,29 @@ const Index = () => {
             )}
 
             {currentStep === 5 && (
-              <StepCompanyForm
-                socios={socios}
-                iptu={iptu}
-                hasEcpf={hasEcpf}
-                companyDocuments={companyDocuments}
-                onUpdateSocios={setSocios}
-                onUpdateIptu={setIptu}
-                onUpdateHasEcpf={setHasEcpf}
-                onUpdateCompanyDocuments={setCompanyDocuments}
-                onBack={handleBack}
-                onSubmit={handleSubmit}
-                isLoading={isSubmitting || isLoading}
-              />
+              <>
+                {sessionExpiringWarning && (
+                  <Alert variant="destructive" className="mb-4">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      Sua sessão está expirando. Salve seu progresso ou faça login novamente.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <StepCompanyForm
+                  socios={socios}
+                  iptu={iptu}
+                  hasEcpf={hasEcpf}
+                  companyDocuments={companyDocuments}
+                  onUpdateSocios={setSocios}
+                  onUpdateIptu={setIptu}
+                  onUpdateHasEcpf={setHasEcpf}
+                  onUpdateCompanyDocuments={setCompanyDocuments}
+                  onBack={handleBack}
+                  onSubmit={handleSubmit}
+                  isLoading={isSubmitting || isLoading}
+                />
+              </>
             )}
           </div>
         </div>
