@@ -110,8 +110,9 @@ const FormularioEmpresa = () => {
     const loadUserData = async () => {
       if (auth.isLoading) return;
 
+      // Wait for session to be available (ProtectedRoute handles the redirect)
       if (!auth.user) {
-        navigate("/login");
+        setIsLoadingPage(false);
         return;
       }
 

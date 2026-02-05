@@ -77,7 +77,7 @@ export const StepRegister = ({
           description: "Continue o cadastro da sua empresa.",
         });
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
           options: {
@@ -87,8 +87,19 @@ export const StepRegister = ({
 
         if (error) throw error;
 
-        // Com auto-confirmação habilitada, a sessão deve ficar disponível imediatamente
-        await auth.ensureUserId();
+        // With auto-confirm enabled, session should be available immediately
+        // Wait for session to be established
+        if (data.session) {
+          // Session is available immediately (auto-confirm is on)
+          await auth.ensureUserId();
+        } else if (data.user && !data.session) {
+          // Email confirmation is required - user needs to check email
+          toast({
+            title: "Verifique seu email",
+            description: "Um link de confirmação foi enviado para seu email.",
+          });
+          return;
+        }
 
         toast({
           title: "Conta criada!",
@@ -96,8 +107,8 @@ export const StepRegister = ({
         });
       }
 
-      // Pequeno delay para evitar corrida com a hidratação do AuthProvider
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      // Longer delay to ensure AuthProvider has fully hydrated the new session
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       onNext();
     } catch (error: unknown) {

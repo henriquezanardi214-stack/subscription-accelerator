@@ -67,8 +67,9 @@ const Login = () => {
       if (error) throw error;
 
       setExistingUserId(null);
+      setHasCompletedRegistration(false);
       toast({
-        title: "Você saiu da sua conta",
+        title: "Logout realizado com sucesso!",
         description: "Agora você pode entrar com outro email.",
       });
     } catch (error) {
