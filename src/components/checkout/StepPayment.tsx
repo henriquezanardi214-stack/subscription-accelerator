@@ -46,7 +46,7 @@ const plans = [
     price: 189,
     features: [
       { name: "Abertura de empresa", included: true },
-      { name: "Emissor de NFS-e", included: true },
+      { name: "Emissor de NFS-e", value: "Até 5 notas/mês" },
       { name: "Contabilidade completa", included: true },
       { name: "Pró-labore", value: "Até 1 sócio" },
       { name: "Atendimento por chat e e-mail", included: true },
@@ -66,7 +66,7 @@ const plans = [
     popular: true,
     features: [
       { name: "Abertura de empresa", included: true },
-      { name: "Emissor de NFS-e", included: true },
+      { name: "Emissor de NFS-e", value: "Até 10 notas/mês" },
       { name: "Contabilidade completa", included: true },
       { name: "Pró-labore", value: "Até 3 sócios" },
       { name: "Atendimento por chat e e-mail", included: true },
@@ -85,7 +85,7 @@ const plans = [
     price: 439,
     features: [
       { name: "Abertura de empresa", included: true },
-      { name: "Emissor de NFS-e", included: true },
+      { name: "Emissor de NFS-e", value: "Até 15 notas/mês" },
       { name: "Contabilidade completa", included: true },
       { name: "Pró-labore", value: "Até 5 sócios" },
       { name: "Atendimento por chat e e-mail", included: true },
