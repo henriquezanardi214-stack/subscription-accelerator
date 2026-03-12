@@ -595,7 +595,7 @@ export const StepPayment = ({
         <Label htmlFor="accept-terms" className="text-sm text-muted-foreground cursor-pointer leading-relaxed">
           Li e concordo com o{" "}
           <a
-            href="https://contabiliadigital.com.br/wp-content/uploads/2026/02/Contrato-Contabilia-Digital.pdf"
+            href="https://contabiliadigital.com.br/wp-content/uploads/2026/03/Contrato-Prestacao-Contabilia-Digital.pdf"
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary underline hover:text-primary/80"
